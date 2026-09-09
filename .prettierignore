@@ -1,0 +1,8 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+agents.md
+apps/*/agents.md
+docs/*.md
+.corepack-bin
