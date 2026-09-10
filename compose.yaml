@@ -14,6 +14,21 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+  postgres-test:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: approveflow_test
+      POSTGRES_USER: approveflow
+      POSTGRES_PASSWORD: approveflow
+    ports:
+      - "5433:5432"
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U approveflow -d approveflow_test"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   redis:
     image: redis:8-alpine
     ports:
