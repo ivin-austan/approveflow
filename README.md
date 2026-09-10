@@ -17,6 +17,10 @@ Turborepo, React, Express, and strict TypeScript.
    updating dependencies).
 4. Run `pnpm dev`.
 
+The Compose stack also starts an isolated PostgreSQL test database on port
+`5433`. Set `TEST_DATABASE_URL` as shown in `.env.example`; integration tests
+may reset this database and must never target the development database.
+
 The web app runs on `http://localhost:5173`; the API defaults to
 `http://localhost:3000`, with health checks at `/health` and `/api/v1/health`.
 

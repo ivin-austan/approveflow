@@ -1,0 +1,96 @@
+openapi: 3.1.0
+info:
+  title: ApproveFlow API
+  version: 0.3.0
+paths:
+  /api/v1/onboarding:
+    post:
+      summary: Create a user and their first organization
+      responses:
+        "201": { description: Organization account created }
+        "400": { description: Validation failure }
+        "409": { description: Account or organization conflict }
+  /api/v1/auth/login:
+    post:
+      summary: Authenticate with email and password
+      responses:
+        "200": { description: Access token issued and refresh cookie set }
+        "401": { description: Invalid credentials }
+  /api/v1/auth/refresh:
+    post:
+      summary: Rotate the refresh session and issue an access token
+      responses:
+        "200": { description: Tokens rotated }
+        "401":
+          { description: Invalid, expired, revoked, or reused refresh token }
+  /api/v1/auth/logout:
+    post:
+      summary: Revoke the current refresh session
+      responses:
+        "204": { description: Session revoked }
+  /api/v1/organizations:
+    get:
+      summary: List organizations with an active membership
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Accessible organizations }
+        "401": { description: Authentication required }
+  /api/v1/context:
+    get:
+      summary: Resolve the active organization membership and permissions
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: header
+          name: X-Organization-Id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200": { description: Active tenant context }
+        "403": { description: No active membership }
+  /api/v1/admin/departments:
+    post:
+      summary: Create a department in the active organization
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Department created }
+  /api/v1/admin/roles:
+    post:
+      summary: Create a permission-backed role in the active organization
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Role created }
+  /api/v1/admin/memberships/{membershipId}/assignments:
+    put:
+      summary: Set departments, default department, roles, and reporting manager
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: membershipId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Membership configuration updated }
+        "404": { description: Same-tenant reference not found }
+  /api/v1/admin/invitations:
+    post:
+      summary: Create a tenant-scoped invitation
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201": { description: Invitation created; secret returned once }
+  /api/v1/admin/invitations/{invitationId}/revoke:
+    post:
+      summary: Revoke a pending invitation
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - in: path
+          name: invitationId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "204": { description: Invitation revoked }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
