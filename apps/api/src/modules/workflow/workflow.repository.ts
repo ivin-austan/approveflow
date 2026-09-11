@@ -46,6 +46,13 @@ export class DrizzleWorkflowRepository implements WorkflowRepository {
         description: workflows.description,
         status: workflows.status,
         currentPublishedVersionId: workflows.currentPublishedVersionId,
+        currentDraftVersionId: sql<string | null>`(
+          select version.id from workflow_versions version
+          where version.organization_id = ${organizationId}
+            and version.workflow_id = ${workflows.id}
+            and version.status = 'DRAFT'
+          limit 1
+        )`,
       })
       .from(workflows)
       .where(eq(workflows.organizationId, organizationId))
@@ -89,6 +96,178 @@ export class DrizzleWorkflowRepository implements WorkflowRepository {
       });
       return true;
     });
+  }
+
+  public createDraftVersion(
+    input: Parameters<WorkflowRepository["createDraftVersion"]>[0],
+  ): Promise<"CREATED" | "NOT_FOUND" | "DRAFT_EXISTS"> {
+    return this.database.transaction(
+      async (transaction) => {
+        const [workflow] = await transaction
+          .select({ id: workflows.id })
+          .from(workflows)
+          .where(
+            and(
+              eq(workflows.organizationId, input.organizationId),
+              eq(workflows.id, input.workflowId),
+            ),
+          )
+          .for("update");
+        if (!workflow) return "NOT_FOUND";
+        const versions = await transaction
+          .select()
+          .from(workflowVersions)
+          .where(
+            and(
+              eq(workflowVersions.organizationId, input.organizationId),
+              eq(workflowVersions.workflowId, input.workflowId),
+            ),
+          );
+        if (versions.some((version) => version.status === "DRAFT"))
+          return "DRAFT_EXISTS";
+        const source = versions.find(
+          (version) =>
+            version.id === input.sourceVersionId &&
+            version.status === "PUBLISHED",
+        );
+        if (!source) return "NOT_FOUND";
+        await transaction.insert(workflowVersions).values({
+          id: input.versionId,
+          organizationId: input.organizationId,
+          workflowId: input.workflowId,
+          versionNumber:
+            Math.max(...versions.map((version) => version.versionNumber)) + 1,
+          revision: 1,
+          allowRequesterSelfApproval: source.allowRequesterSelfApproval,
+          allowNoStageAutomaticApproval: source.allowNoStageAutomaticApproval,
+          automaticApprovalEnabled: source.automaticApprovalEnabled,
+          automaticApprovalDuration: source.automaticApprovalDuration,
+          automaticApprovalDurationUnit: source.automaticApprovalDurationUnit,
+          businessCalendarId: source.businessCalendarId,
+          approvedPdfFieldPolicy: source.approvedPdfFieldPolicy,
+        });
+        for (const section of input.definition.formSections) {
+          await transaction.insert(formSections).values({
+            id: section.id,
+            organizationId: input.organizationId,
+            workflowVersionId: input.versionId,
+            stableKey: section.stableKey,
+            name: section.name,
+            description: section.description,
+            position: section.position,
+          });
+          for (const field of section.fields) {
+            await transaction.insert(formFields).values({
+              id: field.id,
+              organizationId: input.organizationId,
+              workflowVersionId: input.versionId,
+              formSectionId: section.id,
+              stableKey: field.stableKey,
+              type: field.type,
+              label: field.label,
+              description: field.description,
+              isRequired: field.required,
+              position: field.position,
+              config: field.config,
+            });
+            if (field.options.length > 0)
+              await transaction.insert(fieldOptions).values(
+                field.options.map((option) => ({
+                  id: option.id,
+                  organizationId: input.organizationId,
+                  formFieldId: field.id,
+                  stableValue: option.stableValue,
+                  label: option.label,
+                  position: option.position,
+                })),
+              );
+          }
+        }
+        if (input.definition.fieldConditions.length > 0)
+          await transaction.insert(fieldConditions).values(
+            input.definition.fieldConditions.map((item) => ({
+              id: item.id,
+              organizationId: input.organizationId,
+              workflowVersionId: input.versionId,
+              targetFormFieldId: item.targetFormFieldId,
+              effect: item.effect,
+              condition: item.condition,
+            })),
+          );
+        for (const stage of input.definition.stages) {
+          await transaction.insert(workflowStages).values({
+            id: stage.id,
+            organizationId: input.organizationId,
+            workflowVersionId: input.versionId,
+            name: stage.name,
+            description: stage.description,
+            instructions: stage.instructions,
+            position: stage.position,
+            completionPolicy: stage.completionPolicy,
+            dueDuration: stage.dueDuration?.value,
+            dueDurationUnit: stage.dueDuration?.unit,
+            businessCalendarId: stage.businessCalendarId,
+            activationCondition: stage.activationCondition,
+          });
+          await transaction.insert(stageApprovers).values(
+            stage.approvers.map((assignment) => ({
+              id: assignment.id,
+              organizationId: input.organizationId,
+              workflowStageId: stage.id,
+              assignmentType: assignment.assignmentType,
+              membershipId:
+                "membershipId" in assignment
+                  ? assignment.membershipId
+                  : undefined,
+              invitationId:
+                "invitationId" in assignment
+                  ? assignment.invitationId
+                  : undefined,
+              roleId: "roleId" in assignment ? assignment.roleId : undefined,
+              departmentId:
+                "departmentId" in assignment
+                  ? assignment.departmentId
+                  : undefined,
+              formFieldId:
+                "formFieldId" in assignment
+                  ? assignment.formFieldId
+                  : undefined,
+              displayOrder: assignment.displayOrder,
+            })),
+          );
+          if (stage.reminders.length > 0)
+            await transaction.insert(stageReminderRules).values(
+              stage.reminders.map((rule) => ({
+                id: rule.id,
+                organizationId: input.organizationId,
+                workflowStageId: stage.id,
+                sequence: rule.sequence,
+                offsetValue: rule.offset.value,
+                offsetUnit: rule.offset.unit,
+                offsetAnchor: rule.offsetAnchor,
+                recipientPolicy: rule.recipientPolicy,
+              })),
+            );
+          if (stage.escalations.length > 0)
+            await transaction.insert(stageEscalationRules).values(
+              stage.escalations.map((rule) => ({
+                id: rule.id,
+                organizationId: input.organizationId,
+                workflowStageId: stage.id,
+                sequence: rule.sequence,
+                offsetValue: rule.offset.value,
+                offsetUnit: rule.offset.unit,
+                offsetAnchor: rule.offsetAnchor,
+                action: rule.action,
+                recipientPolicy:
+                  rule.action === "NOTIFY" ? rule.recipientPolicy : null,
+              })),
+            );
+        }
+        return "CREATED";
+      },
+      { isolationLevel: "serializable" },
+    );
   }
 
   public async getDraft(
@@ -203,6 +382,7 @@ export class DrizzleWorkflowRepository implements WorkflowRepository {
     return {
       workflowId,
       versionId,
+      status: version.status,
       revision: version.revision,
       expectedRevision: version.revision,
       automaticApprovalEnabled: version.automaticApprovalEnabled,
@@ -584,19 +764,73 @@ export class DrizzleWorkflowRepository implements WorkflowRepository {
           assignment.assignmentType === "ROLE" ||
           assignment.assignmentType === "DEPARTMENT_ROLE"
         ) {
-          valid =
-            (
-              await this.database
-                .select({ id: roles.id })
-                .from(roles)
-                .where(
-                  and(
-                    eq(roles.organizationId, organizationId),
-                    eq(roles.id, assignment.roleId),
-                    eq(roles.status, "ACTIVE"),
-                  ),
-                )
-            ).length === 1;
+          const matchingRole = await this.database
+            .select({ id: roles.id })
+            .from(roles)
+            .where(
+              and(
+                eq(roles.organizationId, organizationId),
+                eq(roles.id, assignment.roleId),
+                eq(roles.status, "ACTIVE"),
+              ),
+            );
+          const eligibleMembers =
+            assignment.assignmentType === "ROLE"
+              ? await this.database
+                  .select({ id: memberships.id })
+                  .from(memberships)
+                  .innerJoin(
+                    membershipRoles,
+                    and(
+                      eq(
+                        membershipRoles.organizationId,
+                        memberships.organizationId,
+                      ),
+                      eq(membershipRoles.membershipId, memberships.id),
+                    ),
+                  )
+                  .where(
+                    and(
+                      eq(memberships.organizationId, organizationId),
+                      eq(memberships.status, "ACTIVE"),
+                      eq(membershipRoles.roleId, assignment.roleId),
+                    ),
+                  )
+              : await this.database
+                  .select({ id: memberships.id })
+                  .from(memberships)
+                  .innerJoin(
+                    membershipRoles,
+                    and(
+                      eq(
+                        membershipRoles.organizationId,
+                        memberships.organizationId,
+                      ),
+                      eq(membershipRoles.membershipId, memberships.id),
+                    ),
+                  )
+                  .innerJoin(
+                    membershipDepartments,
+                    and(
+                      eq(
+                        membershipDepartments.organizationId,
+                        memberships.organizationId,
+                      ),
+                      eq(membershipDepartments.membershipId, memberships.id),
+                    ),
+                  )
+                  .where(
+                    and(
+                      eq(memberships.organizationId, organizationId),
+                      eq(memberships.status, "ACTIVE"),
+                      eq(membershipRoles.roleId, assignment.roleId),
+                      eq(
+                        membershipDepartments.departmentId,
+                        assignment.departmentId,
+                      ),
+                    ),
+                  );
+          valid = matchingRole.length === 1 && eligibleMembers.length > 0;
         } else if (assignment.assignmentType === "FORM_FIELD_USER") {
           valid =
             (
@@ -786,12 +1020,24 @@ export class DrizzleWorkflowRepository implements WorkflowRepository {
           left join roles r on a.assignment_type in ('ROLE', 'DEPARTMENT_ROLE') and a.role_id = r.id and r.organization_id = a.organization_id and r.status = 'ACTIVE'
           left join departments d on a.assignment_type = 'DEPARTMENT_ROLE' and a.department_id = d.id and d.organization_id = a.organization_id and d.status = 'ACTIVE'
           left join form_fields f on a.assignment_type = 'FORM_FIELD_USER' and a.form_field_id = f.id and f.organization_id = a.organization_id and f.workflow_version_id = s.workflow_version_id and f.type = 'MEMBER_SELECTOR'
+          left join business_calendars c on s.business_calendar_id = c.id and c.organization_id = s.organization_id and c.status = 'ACTIVE'
           where s.organization_id = ${input.organizationId} and s.workflow_version_id = ${input.versionId}
-            and (a.id is null or a.invitation_id is not null
+            and (a.id is null or (s.business_calendar_id is not null and c.id is null) or a.invitation_id is not null
               or (a.assignment_type = 'MEMBERSHIP' and m.id is null)
               or (a.assignment_type in ('ROLE', 'DEPARTMENT_ROLE') and r.id is null)
               or (a.assignment_type = 'DEPARTMENT_ROLE' and d.id is null)
-              or (a.assignment_type = 'FORM_FIELD_USER' and f.id is null))
+              or (a.assignment_type = 'FORM_FIELD_USER' and f.id is null)
+              or (a.assignment_type = 'ROLE' and not exists (
+                select 1 from membership_roles mr
+                join memberships eligible on eligible.id = mr.membership_id and eligible.organization_id = mr.organization_id and eligible.status = 'ACTIVE'
+                where mr.organization_id = a.organization_id and mr.role_id = a.role_id
+              ))
+              or (a.assignment_type = 'DEPARTMENT_ROLE' and not exists (
+                select 1 from membership_roles mr
+                join membership_departments md on md.membership_id = mr.membership_id and md.organization_id = mr.organization_id
+                join memberships eligible on eligible.id = mr.membership_id and eligible.organization_id = mr.organization_id and eligible.status = 'ACTIVE'
+                where mr.organization_id = a.organization_id and mr.role_id = a.role_id and md.department_id = a.department_id
+              )))
         ) as invalid
       `);
         const [stageCount] = await transaction

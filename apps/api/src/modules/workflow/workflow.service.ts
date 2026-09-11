@@ -14,6 +14,7 @@ export interface ValidationIssue {
 export type StoredDraft = ReplaceDraft & {
   readonly workflowId: string;
   readonly versionId: string;
+  readonly status: "DRAFT" | "PUBLISHED" | "RETIRED";
   readonly revision: number;
   readonly automaticApprovalEnabled: boolean;
 };
@@ -36,6 +37,7 @@ export interface WorkflowRepository {
       readonly description: string | null;
       readonly status: "ACTIVE" | "ARCHIVED";
       readonly currentPublishedVersionId: string | null;
+      readonly currentDraftVersionId: string | null;
     }[]
   >;
   create(
@@ -46,6 +48,13 @@ export interface WorkflowRepository {
       readonly membershipId: string;
     },
   ): Promise<boolean>;
+  createDraftVersion(input: {
+    readonly organizationId: string;
+    readonly workflowId: string;
+    readonly sourceVersionId: string;
+    readonly versionId: string;
+    readonly definition: ReplaceDraft;
+  }): Promise<"CREATED" | "NOT_FOUND" | "DRAFT_EXISTS">;
   getDraft(
     organizationId: string,
     workflowId: string,
@@ -79,6 +88,7 @@ export interface WorkflowRepository {
 export class WorkflowNotFoundError extends Error {}
 export class WorkflowRevisionConflictError extends Error {}
 export class PublishedWorkflowImmutableError extends Error {}
+export class WorkflowDraftExistsError extends Error {}
 export class InvalidWorkflowError extends Error {
   public constructor(public readonly issues: readonly ValidationIssue[]) {
     super("The workflow must be corrected before publication.");
@@ -108,6 +118,31 @@ export class WorkflowService {
     });
     if (!created) throw new WorkflowNotFoundError("Document type not found");
     return { id, draftVersionId: versionId };
+  }
+
+  public async createDraftVersion(
+    organizationId: string,
+    workflowId: string,
+    sourceVersionId: string,
+  ) {
+    const source = await this.requireDraft(
+      organizationId,
+      workflowId,
+      sourceVersionId,
+    );
+    if (source.status !== "PUBLISHED") throw new WorkflowNotFoundError();
+    const versionId = randomUUID();
+    const definition = cloneDefinition(source);
+    const result = await this.repository.createDraftVersion({
+      organizationId,
+      workflowId,
+      sourceVersionId,
+      versionId,
+      definition,
+    });
+    if (result === "NOT_FOUND") throw new WorkflowNotFoundError();
+    if (result === "DRAFT_EXISTS") throw new WorkflowDraftExistsError();
+    return { id: versionId, revision: 1 };
   }
 
   public async replaceDraft(
@@ -288,4 +323,76 @@ export class WorkflowService {
         });
     return issues;
   }
+}
+
+function cloneDefinition(source: StoredDraft): ReplaceDraft {
+  const fieldIds = new Map<string, string>();
+  const formSections = source.formSections.map((section) => ({
+    ...section,
+    id: randomUUID(),
+    fields: section.fields.map((field) => {
+      const id = randomUUID();
+      fieldIds.set(field.id, id);
+      return {
+        ...field,
+        id,
+        options: field.options.map((option) => ({
+          ...option,
+          id: randomUUID(),
+        })),
+      };
+    }),
+  }));
+  const remapCondition = (
+    condition: NonNullable<
+      ReplaceDraft["stages"][number]["activationCondition"]
+    >,
+  ): NonNullable<ReplaceDraft["stages"][number]["activationCondition"]> => {
+    if (condition.kind === "group")
+      return {
+        ...condition,
+        conditions: condition.conditions.map(remapCondition),
+      };
+    if (condition.kind === "not")
+      return { ...condition, condition: remapCondition(condition.condition) };
+    return {
+      ...condition,
+      fieldId: fieldIds.get(condition.fieldId) ?? condition.fieldId,
+    };
+  };
+  return {
+    expectedRevision: 1,
+    allowRequesterSelfApproval: source.allowRequesterSelfApproval,
+    allowNoStageAutomaticApproval: source.allowNoStageAutomaticApproval,
+    formSections,
+    fieldConditions: source.fieldConditions.map((item) => ({
+      ...item,
+      id: randomUUID(),
+      targetFormFieldId:
+        fieldIds.get(item.targetFormFieldId) ?? item.targetFormFieldId,
+      condition: remapCondition(item.condition),
+    })),
+    stages: source.stages.map((stage) => ({
+      ...stage,
+      id: randomUUID(),
+      activationCondition: stage.activationCondition
+        ? remapCondition(stage.activationCondition)
+        : null,
+      approvers: stage.approvers.map((approver) => ({
+        ...approver,
+        id: randomUUID(),
+        ...(approver.assignmentType === "FORM_FIELD_USER"
+          ? {
+              formFieldId:
+                fieldIds.get(approver.formFieldId) ?? approver.formFieldId,
+            }
+          : {}),
+      })),
+      reminders: stage.reminders.map((rule) => ({ ...rule, id: randomUUID() })),
+      escalations: stage.escalations.map((rule) => ({
+        ...rule,
+        id: randomUUID(),
+      })),
+    })),
+  };
 }

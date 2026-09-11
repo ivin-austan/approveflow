@@ -19,6 +19,7 @@ const ids = {
 const draft: WorkflowDraft = {
   workflowId: ids.workflow,
   versionId: ids.version,
+  status: "DRAFT",
   revision: 1,
   allowRequesterSelfApproval: false,
   allowNoStageAutomaticApproval: false,
@@ -63,9 +64,18 @@ const mockApi = (workflowDraft = draft) =>
       Promise.resolve(
         new Response(
           JSON.stringify({
-            data:
-              requestUrl(input).includes("approver-options") ||
-              requestUrl(input).includes("business-calendars")
+            data: requestUrl(input).includes("/preview")
+              ? {
+                  stages: workflowDraft.stages.map((stage) => ({
+                    ...stage,
+                    result: "MATCHED",
+                    assignments: [],
+                  })),
+                  finalStageId: workflowDraft.stages.at(-1)?.id ?? null,
+                  automaticApproval: false,
+                }
+              : requestUrl(input).includes("approver-options") ||
+                  requestUrl(input).includes("business-calendars")
                 ? []
                 : workflowDraft,
           }),
@@ -263,6 +273,51 @@ describe("WorkflowEditorPage", () => {
     ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Move Normal down" }),
+    ).toBeDisabled();
+  });
+
+  it("adds configurable assignment types and opens the approver invitation dialog", async () => {
+    mockApi();
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[
+            `/organizations/${ids.organization}/workflows/${ids.workflow}/versions/${ids.version}`,
+          ]}
+        >
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/workflows/:workflowId/versions/:versionId"
+              element={<WorkflowEditorPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const roleButtons = await screen.findAllByRole("button", {
+      name: "+ ROLE",
+    });
+    const roleButton = roleButtons.at(0);
+    if (!roleButton) throw new Error("Role assignment button is missing");
+    fireEvent.click(roleButton);
+    expect(screen.getAllByLabelText("Role (all active members)")).toHaveLength(
+      1,
+    );
+    const inviteButtons = screen.getAllByRole("button", {
+      name: "Invite approver",
+    });
+    const inviteButton = inviteButtons.at(0);
+    if (!inviteButton) throw new Error("Invite approver button is missing");
+    fireEvent.click(inviteButton);
+    expect(
+      screen.getByRole("dialog", { name: "Invite approver" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Send invitation" }),
     ).toBeDisabled();
   });
 });

@@ -196,4 +196,48 @@ describe("workflow draft schemas", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("rejects duplicate field keys and select values", () => {
+    const field = (fieldId: string, position: number) => ({
+      id: fieldId,
+      stableKey: "priority",
+      type: "SINGLE_SELECT",
+      label: "Priority",
+      description: null,
+      required: false,
+      position,
+      config: {},
+      options: [
+        {
+          id: id(position + 4),
+          stableValue: "normal",
+          label: "Normal",
+          position: 1,
+        },
+        {
+          id: id(position + 6),
+          stableValue: "normal",
+          label: "Duplicate",
+          position: 2,
+        },
+      ],
+    });
+    const result = replaceDraftSchema.safeParse({
+      expectedRevision: 1,
+      allowRequesterSelfApproval: false,
+      allowNoStageAutomaticApproval: false,
+      formSections: [
+        {
+          id: id(1),
+          stableKey: "request",
+          name: "Request",
+          description: null,
+          position: 1,
+          fields: [field(id(2), 1), field(id(3), 2)],
+        },
+      ],
+      stages: [],
+    });
+    expect(result.success).toBe(false);
+  });
 });

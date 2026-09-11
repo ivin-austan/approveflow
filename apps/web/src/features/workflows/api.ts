@@ -55,7 +55,17 @@ export const workflowApi = {
     answers: Readonly<Record<string, unknown>>,
   ) =>
     call<{
-      stages: { id: string; name: string; position: number; result: string }[];
+      stages: {
+        id: string;
+        name: string;
+        position: number;
+        result: string;
+        assignments: {
+          assignmentId: string;
+          status: "RESOLVED" | "UNRESOLVED";
+          memberships: { id: string; name: string; email: string }[];
+        }[];
+      }[];
       finalStageId: string | null;
       automaticApproval: boolean;
     }>(`${resource(o, w, v)}/preview`, o, {
@@ -77,6 +87,12 @@ export const workflowApi = {
       `/organizations/${o}/workflows`,
       o,
       { method: "POST", body: JSON.stringify(input) },
+    ),
+  createDraftVersion: (o: string, w: string, sourceVersionId: string) =>
+    call<{ id: string; revision: number }>(
+      `/organizations/${o}/workflows/${w}/versions`,
+      o,
+      { method: "POST", body: JSON.stringify({ sourceVersionId }) },
     ),
   memberships: (o: string) =>
     call<ApproverOption[]>(
@@ -102,6 +118,11 @@ export const workflowApi = {
     ),
   createDocumentType: (o: string, input: unknown) =>
     call<{ id: string }>(`/organizations/${o}/document-types`, o, {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
+  invite: (o: string, input: unknown) =>
+    call<{ invitationId: string; expiresAt: string }>("/admin/invitations", o, {
       method: "POST",
       body: JSON.stringify(input),
     }),

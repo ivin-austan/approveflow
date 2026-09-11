@@ -105,12 +105,47 @@ export function WorkflowListPage() {
                 {workflow.description ?? "No description"}
               </p>
               {workflow.currentPublishedVersionId && (
-                <Link
-                  className="mt-4 inline-block text-blue-700 underline"
-                  to={`/organizations/${organizationId}/workflows/${workflow.id}/versions/${workflow.currentPublishedVersionId}`}
-                >
-                  View published version
-                </Link>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <Link
+                    className="text-blue-700 underline"
+                    to={`/organizations/${organizationId}/workflows/${workflow.id}/versions/${workflow.currentPublishedVersionId}`}
+                  >
+                    View published version
+                  </Link>
+                  {workflow.currentDraftVersionId ? (
+                    <Link
+                      className="text-blue-700 underline"
+                      to={`/organizations/${organizationId}/workflows/${workflow.id}/versions/${workflow.currentDraftVersionId}`}
+                    >
+                      Edit draft
+                    </Link>
+                  ) : (
+                    <button
+                      className="text-blue-700 underline"
+                      onClick={() => {
+                        const sourceVersionId =
+                          workflow.currentPublishedVersionId;
+                        if (!sourceVersionId) return;
+                        void workflowApi
+                          .createDraftVersion(
+                            organizationId,
+                            workflow.id,
+                            sourceVersionId,
+                          )
+                          .then((created) => {
+                            void navigate(
+                              `/organizations/${organizationId}/workflows/${workflow.id}/versions/${created.id}`,
+                            );
+                          })
+                          .catch(() => {
+                            setError("Could not create a new draft version.");
+                          });
+                      }}
+                    >
+                      Create new draft
+                    </button>
+                  )}
+                </div>
               )}
             </article>
           ))}

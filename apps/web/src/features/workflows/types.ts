@@ -107,6 +107,7 @@ export interface WorkflowDraft {
   workflowId: string;
   versionId: string;
   revision: number;
+  status: "DRAFT" | "PUBLISHED" | "RETIRED";
   allowRequesterSelfApproval: boolean;
   allowNoStageAutomaticApproval: boolean;
   formSections: FormSection[];
@@ -136,6 +137,7 @@ export interface WorkflowSummary {
   description: string | null;
   status: "ACTIVE" | "ARCHIVED";
   currentPublishedVersionId: string | null;
+  currentDraftVersionId: string | null;
 }
 export interface ConfigurationItem {
   id: string;

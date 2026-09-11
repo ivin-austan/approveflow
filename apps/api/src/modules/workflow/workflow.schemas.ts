@@ -4,7 +4,7 @@ import { conditionSchema } from "./condition.js";
 const id = z.uuid();
 const duration = z
   .object({
-    value: z.number().int().positive(),
+    value: z.number().int().positive().max(10_000),
     unit: z.enum(["BUSINESS_HOURS", "BUSINESS_DAYS"]),
   })
   .strict();
@@ -189,6 +189,30 @@ export const replaceDraftSchema = z
   })
   .strict()
   .superRefine((draft, context) => {
+    const sectionKeys = draft.formSections.map((section) => section.stableKey);
+    if (new Set(sectionKeys).size !== sectionKeys.length)
+      context.addIssue({
+        code: "custom",
+        path: ["formSections"],
+        message: "Form section stable keys must be unique.",
+      });
+    const allFields = draft.formSections.flatMap((section) => section.fields);
+    const fieldKeys = allFields.map((field) => field.stableKey);
+    if (new Set(fieldKeys).size !== fieldKeys.length)
+      context.addIssue({
+        code: "custom",
+        path: ["formSections"],
+        message: "Form field stable keys must be unique within a workflow.",
+      });
+    const fieldConditionTargets = draft.fieldConditions.map(
+      (condition) => condition.targetFormFieldId,
+    );
+    if (new Set(fieldConditionTargets).size !== fieldConditionTargets.length)
+      context.addIssue({
+        code: "custom",
+        path: ["fieldConditions"],
+        message: "A form field may have only one visibility condition.",
+      });
     const positions = draft.stages
       .map((stage) => stage.position)
       .sort((a, b) => a - b);
@@ -269,6 +293,33 @@ export const replaceDraftSchema = z
             message: isSelect
               ? "Select fields require at least one option."
               : "Only select fields may define options.",
+          });
+        if (
+          field.options.some((option, index) => option.position !== index + 1)
+        )
+          context.addIssue({
+            code: "custom",
+            path: [
+              "formSections",
+              sectionIndex,
+              "fields",
+              fieldIndex,
+              "options",
+            ],
+            message: "Field option positions must be contiguous.",
+          });
+        const values = field.options.map((option) => option.stableValue);
+        if (new Set(values).size !== values.length)
+          context.addIssue({
+            code: "custom",
+            path: [
+              "formSections",
+              sectionIndex,
+              "fields",
+              fieldIndex,
+              "options",
+            ],
+            message: "Field option stable values must be unique.",
           });
       }
     }

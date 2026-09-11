@@ -84,9 +84,16 @@ function assignment(
 ): Assignment | null {
   const base = { id: uid(), displayOrder: 1 };
   if (type === "REQUESTER_MANAGER") return { ...base, assignmentType: type };
-  if (type === "MEMBERSHIP") return null;
-  if (type === "ROLE") return null;
-  if (type === "DEPARTMENT_ROLE") return null;
+  if (type === "MEMBERSHIP")
+    return { ...base, assignmentType: type, membershipId: "" };
+  if (type === "ROLE") return { ...base, assignmentType: type, roleId: "" };
+  if (type === "DEPARTMENT_ROLE")
+    return {
+      ...base,
+      assignmentType: type,
+      departmentId: "",
+      roleId: "",
+    };
   const fieldId = draft.formSections
     .flatMap((s) => s.fields)
     .find((f) => f.type === "MEMBER_SELECTOR")?.id;
@@ -483,6 +490,172 @@ function FormBuilder({
                     </button>
                   </fieldset>
                 )}
+                {draft.fieldConditions
+                  .filter(
+                    (condition) => condition.targetFormFieldId === field.id,
+                  )
+                  .map((condition) => (
+                    <fieldset
+                      className="mt-3 grid gap-2 rounded-md border border-blue-200 bg-blue-50 p-3 md:grid-cols-[1fr_1fr_1fr_auto]"
+                      key={condition.id}
+                    >
+                      <legend className="px-1 text-sm font-semibold">
+                        Field condition
+                      </legend>
+                      <label className="field-label">
+                        Effect
+                        <select
+                          className="field-input"
+                          onChange={(event) => {
+                            change({
+                              ...draft,
+                              fieldConditions: draft.fieldConditions.map(
+                                (item) =>
+                                  item.id === condition.id
+                                    ? {
+                                        ...item,
+                                        effect: event.target.value as
+                                          "SHOW" | "HIDE" | "REQUIRE",
+                                      }
+                                    : item,
+                              ),
+                            });
+                          }}
+                          value={condition.effect}
+                        >
+                          <option value="SHOW">Show</option>
+                          <option value="HIDE">Hide</option>
+                          <option value="REQUIRE">Require</option>
+                        </select>
+                      </label>
+                      <label className="field-label">
+                        Source field
+                        <select
+                          className="field-input"
+                          onChange={(event) => {
+                            change({
+                              ...draft,
+                              fieldConditions: draft.fieldConditions.map(
+                                (item) =>
+                                  item.id === condition.id
+                                    ? {
+                                        ...item,
+                                        condition: {
+                                          kind: "isEmpty",
+                                          fieldId: event.target.value,
+                                          empty:
+                                            item.condition.kind === "isEmpty"
+                                              ? item.condition.empty
+                                              : false,
+                                        },
+                                      }
+                                    : item,
+                              ),
+                            });
+                          }}
+                          value={
+                            "fieldId" in condition.condition
+                              ? condition.condition.fieldId
+                              : ""
+                          }
+                        >
+                          {draft.formSections
+                            .flatMap((item) => item.fields)
+                            .filter((item) => item.id !== field.id)
+                            .map((item) => (
+                              <option key={item.id} value={item.id}>
+                                {item.label}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <label className="field-label">
+                        Test
+                        <select
+                          className="field-input"
+                          onChange={(event) => {
+                            if (!("fieldId" in condition.condition)) return;
+                            const fieldId = condition.condition.fieldId;
+                            change({
+                              ...draft,
+                              fieldConditions: draft.fieldConditions.map(
+                                (item) =>
+                                  item.id === condition.id
+                                    ? {
+                                        ...item,
+                                        condition: {
+                                          kind: "isEmpty",
+                                          fieldId,
+                                          empty: event.target.value === "empty",
+                                        },
+                                      }
+                                    : item,
+                              ),
+                            });
+                          }}
+                          value={
+                            condition.condition.kind === "isEmpty" &&
+                            condition.condition.empty
+                              ? "empty"
+                              : "not-empty"
+                          }
+                        >
+                          <option value="not-empty">Is answered</option>
+                          <option value="empty">Is empty</option>
+                        </select>
+                      </label>
+                      <button
+                        aria-label={`Remove condition for ${field.label}`}
+                        className="icon-button danger self-end"
+                        onClick={() => {
+                          change({
+                            ...draft,
+                            fieldConditions: draft.fieldConditions.filter(
+                              (item) => item.id !== condition.id,
+                            ),
+                          });
+                        }}
+                        type="button"
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    </fieldset>
+                  ))}
+                {!draft.fieldConditions.some(
+                  (condition) => condition.targetFormFieldId === field.id,
+                ) &&
+                  draft.formSections
+                    .flatMap((item) => item.fields)
+                    .some((item) => item.id !== field.id) && (
+                    <button
+                      className="chip mt-3"
+                      onClick={() => {
+                        const source = draft.formSections
+                          .flatMap((item) => item.fields)
+                          .find((item) => item.id !== field.id);
+                        if (!source) return;
+                        change({
+                          ...draft,
+                          fieldConditions: [
+                            ...draft.fieldConditions,
+                            {
+                              id: uid(),
+                              targetFormFieldId: field.id,
+                              effect: "SHOW",
+                              condition: {
+                                kind: "isEmpty",
+                                fieldId: source.id,
+                                empty: false,
+                              },
+                            },
+                          ],
+                        });
+                      }}
+                      type="button"
+                    >
+                      Add field condition
+                    </button>
+                  )}
                 {issues
                   .filter((i) => i.entityId === field.id)
                   .map((i) => (
@@ -686,6 +859,7 @@ function SortableStage({
   move,
   remove,
   duplicate,
+  invite,
 }: {
   item: Stage;
   index: number;
@@ -701,6 +875,7 @@ function SortableStage({
   move: (from: number, to: number) => void;
   remove: () => void;
   duplicate: () => void;
+  invite: () => void;
 }) {
   const sortable = useSortable({ id: item.id });
   const style = {
@@ -943,6 +1118,9 @@ function SortableStage({
                   + {type.replaceAll("_", " ")}
                 </button>
               ))}
+              <button className="chip" onClick={invite} type="button">
+                Invite approver
+              </button>
             </div>
           </fieldset>
           <fieldset className="mt-4 rounded-lg border p-3">
@@ -1225,11 +1403,28 @@ export function WorkflowEditorPage() {
   const [issues, setIssues] = useState<ValidationIssue[]>([]);
   const [notice, setNotice] = useState("");
   const [preview, setPreview] = useState<
-    { id: string; name: string; result: string }[]
+    {
+      id: string;
+      name: string;
+      result: string;
+      assignments: {
+        assignmentId: string;
+        status: "RESOLVED" | "UNRESOLVED";
+        memberships: { id: string; name: string; email: string }[];
+      }[];
+    }[]
   >([]);
   const [previewAnswers, setPreviewAnswers] = useState<Record<string, unknown>>(
     {},
   );
+  const [finalPreviewStageId, setFinalPreviewStageId] = useState<string | null>(
+    null,
+  );
+  const [inviteStageId, setInviteStageId] = useState<string | null>(null);
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteDepartmentId, setInviteDepartmentId] = useState("");
+  const [inviteRoleId, setInviteRoleId] = useState("");
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
@@ -1335,11 +1530,14 @@ export function WorkflowEditorPage() {
         <div className="flex flex-wrap gap-2">
           <button
             className="button-secondary"
+            disabled={dirty}
+            title={dirty ? "Save the draft before previewing" : undefined}
             onClick={() =>
               void workflowApi
                 .preview(organizationId, workflowId, versionId, previewAnswers)
                 .then((value) => {
                   setPreview(value.stages);
+                  setFinalPreviewStageId(value.finalStageId);
                   setNotice(
                     value.finalStageId
                       ? "Preview path ready."
@@ -1353,6 +1551,8 @@ export function WorkflowEditorPage() {
           </button>
           <button
             className="button-secondary"
+            disabled={dirty}
+            title={dirty ? "Save the draft before validating" : undefined}
             onClick={() =>
               void workflowApi
                 .validate(organizationId, workflowId, versionId)
@@ -1371,7 +1571,7 @@ export function WorkflowEditorPage() {
           </button>
           <button
             className="button-primary"
-            disabled={!dirty || save.isPending}
+            disabled={draft.status !== "DRAFT" || !dirty || save.isPending}
             onClick={() =>
               void save
                 .mutateAsync(draft)
@@ -1387,12 +1587,13 @@ export function WorkflowEditorPage() {
           </button>
           <button
             className="button-success"
-            disabled={dirty}
+            disabled={draft.status !== "DRAFT" || dirty}
             title={dirty ? "Save the draft before publishing" : undefined}
             onClick={() =>
               void workflowApi
                 .publish(organizationId, workflowId, versionId, draft.revision)
                 .then(() => {
+                  setDraft({ ...draft, status: "PUBLISHED" });
                   setNotice("Workflow published and is now immutable.");
                 })
                 .catch(showError)
@@ -1405,6 +1606,12 @@ export function WorkflowEditorPage() {
       {notice && (
         <p role="status" className="notice">
           {notice}
+        </p>
+      )}
+      {draft.status !== "DRAFT" && (
+        <p className="notice">
+          This published version is immutable. Create a new draft from the
+          workflow list to make changes.
         </p>
       )}
       {issues
@@ -1427,108 +1634,241 @@ export function WorkflowEditorPage() {
             return { ...current, [fieldId]: value };
           });
           setPreview([]);
+          setFinalPreviewStageId(null);
         }}
       />
-      <FormBuilder draft={draft} change={change} issues={issues} />
-      <section className="mt-10" aria-labelledby="stages-title">
-        <div className="mb-4">
-          <h2 id="stages-title" className="text-2xl font-bold">
-            Approval Stages
-          </h2>
-          <p className="text-sm text-slate-600">
-            Stages run sequentially. Drag the handle or use the
-            keyboard-accessible arrow controls to reorder.
-          </p>
-        </div>
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragEnd={dragEnd}
-        >
-          <SortableContext
-            items={draft.stages.map((s) => s.id)}
-            strategy={verticalListSortingStrategy}
+      <fieldset disabled={draft.status !== "DRAFT"}>
+        <FormBuilder draft={draft} change={change} issues={issues} />
+        <section className="mt-10" aria-labelledby="stages-title">
+          <div className="mb-4">
+            <h2 id="stages-title" className="text-2xl font-bold">
+              Approval Stages
+            </h2>
+            <p className="text-sm text-slate-600">
+              Stages run sequentially. Drag the handle or use the
+              keyboard-accessible arrow controls to reorder.
+            </p>
+          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={dragEnd}
           >
-            <ol className="space-y-4">
-              {draft.stages.map((item, index) => (
-                <SortableStage
-                  key={item.id}
-                  item={item}
-                  index={index}
-                  draft={draft}
-                  options={options}
-                  issues={issues}
-                  move={move}
-                  update={(next) => {
-                    updateStages(
-                      draft.stages.map((s) => (s.id === item.id ? next : s)),
-                    );
-                  }}
-                  remove={() => {
-                    if (confirm(`Delete ${item.name}?`))
+            <SortableContext
+              items={draft.stages.map((s) => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              <ol className="space-y-4">
+                {draft.stages.map((item, index) => (
+                  <SortableStage
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    draft={draft}
+                    options={options}
+                    issues={issues}
+                    move={move}
+                    update={(next) => {
                       updateStages(
-                        draft.stages.filter((s) => s.id !== item.id),
+                        draft.stages.map((s) => (s.id === item.id ? next : s)),
                       );
-                  }}
-                  duplicate={() => {
-                    updateStages([
-                      ...draft.stages.slice(0, index + 1),
-                      {
-                        ...item,
-                        id: uid(),
-                        name: `${item.name} copy`,
-                        approvers: item.approvers.map((a) => ({
-                          ...a,
+                    }}
+                    remove={() => {
+                      if (confirm(`Delete ${item.name}?`))
+                        updateStages(
+                          draft.stages.filter((s) => s.id !== item.id),
+                        );
+                    }}
+                    duplicate={() => {
+                      updateStages([
+                        ...draft.stages.slice(0, index + 1),
+                        {
+                          ...item,
                           id: uid(),
-                        })),
-                        reminders: item.reminders.map((r) => ({
-                          ...r,
-                          id: uid(),
-                        })),
-                        escalations: item.escalations.map((e) => ({
-                          ...e,
-                          id: uid(),
-                        })),
-                      },
-                      ...draft.stages.slice(index + 1),
-                    ]);
-                  }}
-                />
-              ))}
-            </ol>
-          </SortableContext>
-        </DndContext>
-        <button
-          className="button-dashed mt-5"
-          onClick={() => {
-            updateStages([...draft.stages, makeStage(draft.stages.length + 1)]);
-          }}
-        >
-          <Plus /> Add Approval Level
-        </button>
-      </section>
+                          name: `${item.name} copy`,
+                          approvers: item.approvers.map((a) => ({
+                            ...a,
+                            id: uid(),
+                          })),
+                          reminders: item.reminders.map((r) => ({
+                            ...r,
+                            id: uid(),
+                          })),
+                          escalations: item.escalations.map((e) => ({
+                            ...e,
+                            id: uid(),
+                          })),
+                        },
+                        ...draft.stages.slice(index + 1),
+                      ]);
+                    }}
+                    invite={() => {
+                      setInviteStageId(item.id);
+                    }}
+                  />
+                ))}
+              </ol>
+            </SortableContext>
+          </DndContext>
+          <button
+            className="button-dashed mt-5"
+            onClick={() => {
+              updateStages([
+                ...draft.stages,
+                makeStage(draft.stages.length + 1),
+              ]);
+            }}
+          >
+            <Plus /> Add Approval Level
+          </button>
+        </section>
+      </fieldset>
       {preview.length > 0 && (
         <aside className="panel mt-8">
           <h2 className="text-xl font-bold">Representative path preview</h2>
           <ol className="mt-3 space-y-2">
             {preview.map((s, i) => (
-              <li
-                key={s.id}
-                className="flex justify-between rounded bg-slate-50 p-3"
-              >
-                <span>
-                  {String(i + 1)}. {s.name}
-                </span>
-                <strong>
-                  {s.result}
-                  {i === preview.length - 1 && s.result === "MATCHED"
-                    ? " · Final"
-                    : ""}
-                </strong>
+              <li key={s.id} className="rounded bg-slate-50 p-3">
+                <div className="flex justify-between gap-3">
+                  <span>
+                    {String(i + 1)}. {s.name}
+                  </span>
+                  <strong>
+                    {s.result}
+                    {s.id === finalPreviewStageId ? " · Final" : ""}
+                  </strong>
+                </div>
+                <ul className="mt-2 space-y-1 text-sm text-slate-600">
+                  {s.assignments.map((assignment) => (
+                    <li key={assignment.assignmentId}>
+                      {assignment.memberships.length > 0
+                        ? assignment.memberships
+                            .map(
+                              (membership) =>
+                                `${membership.name} (${membership.email})`,
+                            )
+                            .join(", ")
+                        : "Approver unresolved for these answers"}
+                    </li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ol>
         </aside>
+      )}
+      {inviteStageId && (
+        <div
+          aria-labelledby="invite-title"
+          aria-modal="true"
+          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"
+          role="dialog"
+        >
+          <form
+            className="panel w-full max-w-lg space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void workflowApi
+                .invite(organizationId, {
+                  fullName: inviteName,
+                  email: inviteEmail,
+                  departmentIds: [inviteDepartmentId],
+                  defaultDepartmentId: inviteDepartmentId,
+                  roleIds: inviteRoleId ? [inviteRoleId] : [],
+                })
+                .then((created) => {
+                  updateStages(
+                    draft.stages.map((stage) =>
+                      stage.id === inviteStageId
+                        ? {
+                            ...stage,
+                            approvers: [
+                              ...stage.approvers,
+                              {
+                                id: uid(),
+                                assignmentType: "MEMBERSHIP",
+                                invitationId: created.invitationId,
+                                displayOrder: stage.approvers.length + 1,
+                              },
+                            ],
+                          }
+                        : stage,
+                    ),
+                  );
+                  setInviteStageId(null);
+                  setInviteName("");
+                  setInviteEmail("");
+                  setInviteDepartmentId("");
+                  setInviteRoleId("");
+                  setNotice(
+                    "Invitation added. Publication is blocked until it is accepted.",
+                  );
+                })
+                .catch(showError);
+            }}
+          >
+            <h2 className="text-xl font-bold" id="invite-title">
+              Invite approver
+            </h2>
+            <label className="field-label">
+              Full name
+              <input
+                className="field-input"
+                onChange={(event) => {
+                  setInviteName(event.target.value);
+                }}
+                required
+                value={inviteName}
+              />
+            </label>
+            <label className="field-label">
+              Email
+              <input
+                className="field-input"
+                onChange={(event) => {
+                  setInviteEmail(event.target.value);
+                }}
+                required
+                type="email"
+                value={inviteEmail}
+              />
+            </label>
+            <OptionSelect
+              label="Department"
+              onChange={setInviteDepartmentId}
+              options={options.departments.filter(
+                (option) => option.status === "ACTIVE",
+              )}
+              value={inviteDepartmentId}
+            />
+            <OptionSelect
+              label="Role (optional)"
+              onChange={setInviteRoleId}
+              options={options.roles.filter(
+                (option) => option.status === "ACTIVE",
+              )}
+              value={inviteRoleId}
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                className="button-secondary"
+                onClick={() => {
+                  setInviteStageId(null);
+                }}
+                type="button"
+              >
+                Cancel
+              </button>
+              <button
+                className="button-primary"
+                disabled={!inviteDepartmentId}
+                type="submit"
+              >
+                Send invitation
+              </button>
+            </div>
+          </form>
+        </div>
       )}
     </main>
   );

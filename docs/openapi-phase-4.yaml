@@ -47,6 +47,27 @@ paths:
           "200": { $ref: "#/components/responses/Success" },
           "404": { $ref: "#/components/responses/Error" },
         }
+  /organizations/{organizationId}/workflows/{workflowId}/versions:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        { $ref: "#/components/parameters/WorkflowId" },
+      ]
+    post:
+      summary: Create a new editable draft from a published workflow version
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceVersionId]
+              properties:
+                sourceVersionId: { type: string, format: uuid }
+      responses:
+        "201": { $ref: "#/components/responses/Success" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
     put:
       summary: Atomically replace a draft using optimistic revision control
       requestBody:

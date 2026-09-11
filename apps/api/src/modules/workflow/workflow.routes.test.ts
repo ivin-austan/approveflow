@@ -14,6 +14,7 @@ const versionId = "33333333-3333-4333-8333-333333333333";
 const repository: WorkflowRepository = {
   list: () => Promise.resolve([]),
   create: () => Promise.resolve(true),
+  createDraftVersion: () => Promise.resolve("CREATED"),
   getDraft: () => Promise.resolve(null),
   replaceDraft: () => Promise.resolve("CONFLICT"),
   validateReferences: () => Promise.resolve([]),
@@ -44,6 +45,46 @@ const app = createApp({
 });
 
 describe("workflow routes", () => {
+  it("creates a tenant-scoped draft from a published version", async () => {
+    const createDraftVersion = () => Promise.resolve("CREATED" as const);
+    const versioningApp = createApp({
+      webOrigin: "http://localhost:5173",
+      workflowRouter: createWorkflowRouter(
+        new WorkflowService({
+          ...repository,
+          createDraftVersion,
+          getDraft: () =>
+            Promise.resolve({
+              workflowId,
+              versionId,
+              status: "PUBLISHED",
+              revision: 1,
+              expectedRevision: 1,
+              automaticApprovalEnabled: false,
+              allowRequesterSelfApproval: false,
+              allowNoStageAutomaticApproval: false,
+              formSections: [],
+              fieldConditions: [],
+              stages: [],
+            }),
+        }),
+        { verify: () => Promise.resolve("user") },
+        tenants,
+      ),
+    });
+    const response = await request(versioningApp)
+      .post(
+        `/api/v1/organizations/${organizationId}/workflows/${workflowId}/versions`,
+      )
+      .set("authorization", "Bearer valid")
+      .set("x-organization-id", organizationId)
+      .send({ sourceVersionId: versionId });
+    expect(response.status).toBe(201);
+    expect(JSON.parse(response.text) as unknown).toMatchObject({
+      data: { revision: 1 },
+    });
+  });
+
   it("rejects a URL organization that differs from the active tenant", async () => {
     const response = await request(app)
       .get(

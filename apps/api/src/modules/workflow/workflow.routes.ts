@@ -17,6 +17,7 @@ import {
 import {
   InvalidWorkflowError,
   PublishedWorkflowImmutableError,
+  WorkflowDraftExistsError,
   WorkflowNotFoundError,
   WorkflowRevisionConflictError,
   type WorkflowService,
@@ -65,6 +66,12 @@ function translate(error: unknown): never {
       "PUBLISHED_WORKFLOW_IMMUTABLE",
       "Published workflow versions cannot be changed",
     );
+  if (error instanceof WorkflowDraftExistsError)
+    throw new HttpError(
+      409,
+      "WORKFLOW_DRAFT_EXISTS",
+      "This workflow already has an editable draft",
+    );
   if (error instanceof InvalidWorkflowError)
     throw new HttpError(422, "WORKFLOW_INVALID", error.message, {
       issues: error.issues,
@@ -104,6 +111,33 @@ export function createWorkflowRouter(
                 tenant.organizationId,
                 tenant.membershipId,
                 parse(createWorkflowSchema, request.body),
+              ),
+            ),
+          );
+      } catch (error) {
+        translate(error);
+      }
+    }),
+  );
+  router.post(
+    "/organizations/:organizationId/workflows/:workflowId/versions",
+    requirePermission("workflow.edit"),
+    asyncHandler(async (request, response) => {
+      const tenant = context(request);
+      const body = parse(
+        z.object({ sourceVersionId: idSchema }).strict(),
+        request.body,
+      );
+      try {
+        response
+          .status(201)
+          .json(
+            success(
+              request,
+              await service.createDraftVersion(
+                tenant.organizationId,
+                parse(idSchema, request.params.workflowId),
+                body.sourceVersionId,
               ),
             ),
           );

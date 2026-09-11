@@ -10,6 +10,7 @@ import {
 const draft: StoredDraft = {
   workflowId: "w",
   versionId: "v",
+  status: "DRAFT",
   revision: 2,
   expectedRevision: 2,
   automaticApprovalEnabled: false,
@@ -24,6 +25,7 @@ const repository = (
 ): WorkflowRepository => ({
   list: () => Promise.resolve([]),
   create: () => Promise.resolve(true),
+  createDraftVersion: () => Promise.resolve("CREATED"),
   getDraft: () => Promise.resolve(draft),
   replaceDraft: () => Promise.resolve("UPDATED"),
   validateReferences: () => Promise.resolve([]),
@@ -112,5 +114,77 @@ describe("WorkflowService", () => {
     await expect(
       service.replaceDraft("o", "w", "v", draft),
     ).rejects.toBeInstanceOf(PublishedWorkflowImmutableError);
+  });
+
+  it("clones a published version with remapped definition ids", async () => {
+    const createDraftVersion = vi.fn<WorkflowRepository["createDraftVersion"]>(
+      () => Promise.resolve("CREATED"),
+    );
+    const fieldId = "11111111-1111-4111-8111-111111111111";
+    const published: StoredDraft = {
+      ...draft,
+      status: "PUBLISHED",
+      formSections: [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          stableKey: "request",
+          name: "Request",
+          description: null,
+          position: 1,
+          fields: [
+            {
+              id: fieldId,
+              stableKey: "owner",
+              type: "MEMBER_SELECTOR",
+              label: "Owner",
+              description: null,
+              required: true,
+              position: 1,
+              config: {},
+              options: [],
+            },
+          ],
+        },
+      ],
+      stages: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          name: "Review",
+          description: null,
+          instructions: null,
+          position: 1,
+          completionPolicy: "ANY",
+          dueDuration: null,
+          businessCalendarId: null,
+          activationCondition: { kind: "isEmpty", fieldId, empty: false },
+          approvers: [
+            {
+              id: "44444444-4444-4444-8444-444444444444",
+              assignmentType: "FORM_FIELD_USER",
+              formFieldId: fieldId,
+              displayOrder: 1,
+            },
+          ],
+          reminders: [],
+          escalations: [],
+        },
+      ],
+    };
+    await new WorkflowService(
+      repository({
+        getDraft: () => Promise.resolve(published),
+        createDraftVersion,
+      }),
+    ).createDraftVersion("o", "w", "v");
+    const cloned = createDraftVersion.mock.calls[0]?.[0].definition;
+    const clonedField = cloned?.formSections[0]?.fields[0];
+    const clonedStage = cloned?.stages[0];
+    expect(clonedField?.id).not.toBe(fieldId);
+    expect(clonedStage?.activationCondition).toMatchObject({
+      fieldId: clonedField?.id,
+    });
+    expect(clonedStage?.approvers[0]).toMatchObject({
+      formFieldId: clonedField?.id,
+    });
   });
 });
