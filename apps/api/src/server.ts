@@ -15,6 +15,12 @@ import { OnboardingService } from "./modules/onboarding/onboarding.service.js";
 import { DrizzleAdministrationRepository } from "./modules/administration/administration.repository.js";
 import { createAdministrationRouter } from "./modules/administration/administration.routes.js";
 import { AdministrationService } from "./modules/administration/administration.service.js";
+import { DrizzleWorkflowRepository } from "./modules/workflow/workflow.repository.js";
+import { createWorkflowRouter } from "./modules/workflow/workflow.routes.js";
+import { WorkflowService } from "./modules/workflow/workflow.service.js";
+import { DrizzleWorkflowConfigurationRepository } from "./modules/workflow/configuration.repository.js";
+import { createWorkflowConfigurationRouter } from "./modules/workflow/configuration.routes.js";
+import { WorkflowConfigurationService } from "./modules/workflow/configuration.service.js";
 
 const environment = parseServerEnvironment(process.env);
 const { db } = createDatabase(environment.DATABASE_URL);
@@ -32,6 +38,10 @@ const tenantRepository = new DrizzleTenantRepository(db);
 const administrationService = new AdministrationService(
   new DrizzleAdministrationRepository(db),
 );
+const workflowService = new WorkflowService(new DrizzleWorkflowRepository(db));
+const workflowConfigurationService = new WorkflowConfigurationService(
+  new DrizzleWorkflowConfigurationRepository(db),
+);
 const app = createApp({
   webOrigin: environment.WEB_ORIGIN,
   authRouter: createAuthRouter({
@@ -47,6 +57,16 @@ const app = createApp({
   ),
   administrationRouter: createAdministrationRouter(
     administrationService,
+    accessTokens,
+    tenantRepository,
+  ),
+  workflowRouter: createWorkflowRouter(
+    workflowService,
+    accessTokens,
+    tenantRepository,
+  ),
+  workflowConfigurationRouter: createWorkflowConfigurationRouter(
+    workflowConfigurationService,
     accessTokens,
     tenantRepository,
   ),

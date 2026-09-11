@@ -24,6 +24,11 @@ export async function resetTestDatabase(
   await database.execute(
     sql.raw(`
     TRUNCATE TABLE
+      stage_escalation_rules, stage_reminder_rules, stage_approvers,
+      workflow_stages, field_conditions, field_options, form_fields,
+      form_sections, workflow_versions, workflows, document_types,
+      business_calendar_holidays, business_calendar_work_periods,
+      business_calendars,
       invitation_departments, invitation_roles, invitations,
       membership_departments, membership_roles, role_permissions,
       sessions, departments, roles, memberships, organizations, users,

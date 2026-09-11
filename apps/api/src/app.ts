@@ -19,6 +19,8 @@ interface AppOptions {
   readonly tenantRouter?: Router;
   readonly onboardingRouter?: Router;
   readonly administrationRouter?: Router;
+  readonly workflowRouter?: Router;
+  readonly workflowConfigurationRouter?: Router;
 }
 
 export function createApp(options: string | AppOptions) {
@@ -57,6 +59,9 @@ export function createApp(options: string | AppOptions) {
     app.use("/api/v1/onboarding", settings.onboardingRouter);
   if (settings.administrationRouter)
     app.use("/api/v1/admin", settings.administrationRouter);
+  if (settings.workflowRouter) app.use("/api/v1", settings.workflowRouter);
+  if (settings.workflowConfigurationRouter)
+    app.use("/api/v1", settings.workflowConfigurationRouter);
 
   app.use((request, response) => {
     const body: ApiError = {
