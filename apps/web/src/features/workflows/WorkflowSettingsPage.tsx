@@ -14,6 +14,25 @@ const documentSchema = z.object({
   name: z.string().min(1),
   code: z.string().regex(/^[A-Za-z0-9_-]{2,20}$/),
   businessCalendarId: z.uuid(),
+  numberFormat: z
+    .string()
+    .min(1)
+    .max(200)
+    .refine(
+      (value) =>
+        [
+          "{DEPARTMENT_CODE}",
+          "{DOCUMENT_TYPE_CODE}",
+          "{YEAR}",
+          "{SEQUENCE}",
+        ].every((token) => value.includes(token)),
+      "Number format must include department, document type, year, and sequence tokens.",
+    ),
+  sequencePadding: z.number().int().min(1).max(12),
+  approvedPdfRetentionYears: z.number().int().min(1).max(25),
+  automaticApprovalEnabled: z.boolean(),
+  automaticApprovalAfterValue: z.number().int().positive().max(10_000),
+  automaticApprovalAfterUnit: z.enum(["BUSINESS_HOURS", "BUSINESS_DAYS"]),
 });
 type DocumentForm = z.infer<typeof documentSchema>;
 
@@ -37,8 +56,21 @@ export function WorkflowSettingsPage() {
   });
   const documentForm = useForm<DocumentForm>({
     resolver: zodResolver(documentSchema),
-    defaultValues: { name: "", code: "", businessCalendarId: "" },
+    defaultValues: {
+      name: "",
+      code: "",
+      businessCalendarId: "",
+      numberFormat: "{DEPARTMENT_CODE}-{DOCUMENT_TYPE_CODE}-{YEAR}-{SEQUENCE}",
+      sequencePadding: 5,
+      approvedPdfRetentionYears: 7,
+      automaticApprovalEnabled: false,
+      automaticApprovalAfterValue: 1,
+      automaticApprovalAfterUnit: "BUSINESS_DAYS",
+    },
   });
+  const automaticApprovalEnabled = documentForm.watch(
+    "automaticApprovalEnabled",
+  );
   return (
     <main className="page">
       <header className="mb-8">
@@ -123,28 +155,37 @@ export function WorkflowSettingsPage() {
           <form
             className="mt-4 space-y-3"
             onSubmit={(event) => {
-              void documentForm.handleSubmit(
-                (value) =>
-                  void workflowApi
-                    .createDocumentType(organizationId, {
-                      ...value,
-                      numberFormat:
-                        "{DEPARTMENT_CODE}-{DOCUMENT_TYPE_CODE}-{YEAR}-{SEQUENCE}",
-                      sequencePadding: 5,
-                      approvedPdfRetentionYears: 7,
-                      approvedPdfFieldPolicy: {
-                        includeAllSubmittedFields: true,
-                        excludedFieldIds: [],
-                      },
-                      automaticApproval: { enabled: false },
-                    })
-                    .then(async () => {
-                      documentForm.reset();
-                      await client.invalidateQueries({
-                        queryKey: ["document-types", organizationId],
-                      });
-                    }),
-              )(event);
+              void documentForm.handleSubmit((value) => {
+                const {
+                  automaticApprovalEnabled: enabled,
+                  automaticApprovalAfterValue,
+                  automaticApprovalAfterUnit,
+                  ...definition
+                } = value;
+                void workflowApi
+                  .createDocumentType(organizationId, {
+                    ...definition,
+                    approvedPdfFieldPolicy: {
+                      includeAllSubmittedFields: true,
+                      excludedFieldIds: [],
+                    },
+                    automaticApproval: enabled
+                      ? {
+                          enabled: true,
+                          after: {
+                            value: automaticApprovalAfterValue,
+                            unit: automaticApprovalAfterUnit,
+                          },
+                        }
+                      : { enabled: false },
+                  })
+                  .then(async () => {
+                    documentForm.reset();
+                    await client.invalidateQueries({
+                      queryKey: ["document-types", organizationId],
+                    });
+                  });
+              })(event);
             }}
           >
             <label className="field-label">
@@ -175,6 +216,72 @@ export function WorkflowSettingsPage() {
                 ))}
               </select>
             </label>
+            <label className="field-label">
+              Number format
+              <input
+                className="field-input font-mono text-sm"
+                {...documentForm.register("numberFormat")}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="field-label">
+                Sequence digits
+                <input
+                  className="field-input"
+                  type="number"
+                  min="1"
+                  max="12"
+                  {...documentForm.register("sequencePadding", {
+                    valueAsNumber: true,
+                  })}
+                />
+              </label>
+              <label className="field-label">
+                PDF retention years
+                <input
+                  className="field-input"
+                  type="number"
+                  min="1"
+                  max="25"
+                  {...documentForm.register("approvedPdfRetentionYears", {
+                    valueAsNumber: true,
+                  })}
+                />
+              </label>
+            </div>
+            <label className="flex items-center gap-2 font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                {...documentForm.register("automaticApprovalEnabled")}
+              />
+              Automatically approve incomplete stages after a threshold
+            </label>
+            {automaticApprovalEnabled && (
+              <div className="grid grid-cols-2 gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">
+                <label className="field-label">
+                  Approval threshold
+                  <input
+                    className="field-input"
+                    type="number"
+                    min="1"
+                    max="10000"
+                    {...documentForm.register("automaticApprovalAfterValue", {
+                      valueAsNumber: true,
+                    })}
+                  />
+                </label>
+                <label className="field-label">
+                  Business-time unit
+                  <select
+                    className="field-input"
+                    {...documentForm.register("automaticApprovalAfterUnit")}
+                  >
+                    <option value="BUSINESS_HOURS">Business hours</option>
+                    <option value="BUSINESS_DAYS">Business days</option>
+                  </select>
+                </label>
+              </div>
+            )}
             {Object.values(documentForm.formState.errors).map((e) => (
               <p className="issue" key={e.message}>
                 {e.message}
