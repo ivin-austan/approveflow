@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   businessCalendarHolidays,
@@ -13,6 +13,37 @@ type Database = NodePgDatabase<typeof databaseSchema>;
 
 export class DrizzleWorkflowConfigurationRepository implements WorkflowConfigurationRepository {
   public constructor(private readonly database: Database) {}
+
+  public listBusinessCalendars(organizationId: string) {
+    return this.database
+      .select({
+        id: businessCalendars.id,
+        name: businessCalendars.name,
+        timezone: businessCalendars.timezone,
+        revision: businessCalendars.revision,
+        isDefault: businessCalendars.isDefault,
+        status: businessCalendars.status,
+      })
+      .from(businessCalendars)
+      .where(eq(businessCalendars.organizationId, organizationId))
+      .orderBy(asc(businessCalendars.name));
+  }
+
+  public listDocumentTypes(organizationId: string) {
+    return this.database
+      .select({
+        id: documentTypes.id,
+        name: documentTypes.name,
+        code: documentTypes.code,
+        status: documentTypes.status,
+        businessCalendarId: documentTypes.businessCalendarId,
+        numberFormat: documentTypes.numberFormat,
+        sequencePadding: documentTypes.sequencePadding,
+      })
+      .from(documentTypes)
+      .where(eq(documentTypes.organizationId, organizationId))
+      .orderBy(asc(documentTypes.name));
+  }
 
   public saveBusinessCalendar(
     input: Parameters<

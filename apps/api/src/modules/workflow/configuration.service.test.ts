@@ -8,6 +8,8 @@ import {
 const repository = (
   overrides: Partial<WorkflowConfigurationRepository> = {},
 ): WorkflowConfigurationRepository => ({
+  listBusinessCalendars: () => Promise.resolve([]),
+  listDocumentTypes: () => Promise.resolve([]),
   saveBusinessCalendar: () => Promise.resolve("SAVED"),
   createDocumentType: () => Promise.resolve(true),
   ...overrides,

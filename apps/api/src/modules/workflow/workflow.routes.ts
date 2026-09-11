@@ -10,7 +10,10 @@ import type {
   AccessTokenVerifier,
   TenantRepository,
 } from "../tenant/tenant.types.js";
-import { replaceDraftSchema } from "./workflow.schemas.js";
+import {
+  createWorkflowSchema,
+  replaceDraftSchema,
+} from "./workflow.schemas.js";
 import {
   InvalidWorkflowError,
   PublishedWorkflowImmutableError,
@@ -77,6 +80,38 @@ export function createWorkflowRouter(
   const router = Router();
   router.use(authenticate(verifier));
   router.use(resolveTenant(tenantRepository));
+  router.get(
+    "/organizations/:organizationId/workflows",
+    requirePermission("workflow.read"),
+    asyncHandler(async (request, response) => {
+      response.json(
+        success(request, await service.list(context(request).organizationId)),
+      );
+    }),
+  );
+  router.post(
+    "/organizations/:organizationId/workflows",
+    requirePermission("workflow.create"),
+    asyncHandler(async (request, response) => {
+      const tenant = context(request);
+      try {
+        response
+          .status(201)
+          .json(
+            success(
+              request,
+              await service.create(
+                tenant.organizationId,
+                tenant.membershipId,
+                parse(createWorkflowSchema, request.body),
+              ),
+            ),
+          );
+      } catch (error) {
+        translate(error);
+      }
+    }),
+  );
   const path =
     "/organizations/:organizationId/workflows/:workflowId/versions/:versionId";
 

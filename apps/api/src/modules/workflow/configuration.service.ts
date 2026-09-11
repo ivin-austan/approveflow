@@ -15,7 +15,32 @@ export class ConfigurationValidationError extends Error {}
 export class ConfigurationReferenceError extends Error {}
 export class ConfigurationRevisionConflictError extends Error {}
 
+export interface BusinessCalendarSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly timezone: string;
+  readonly revision: number;
+  readonly isDefault: boolean;
+  readonly status: "ACTIVE" | "ARCHIVED";
+}
+
+export interface DocumentTypeSummary {
+  readonly id: string;
+  readonly name: string;
+  readonly code: string;
+  readonly status: "ACTIVE" | "ARCHIVED";
+  readonly businessCalendarId: string;
+  readonly numberFormat: string;
+  readonly sequencePadding: number;
+}
+
 export interface WorkflowConfigurationRepository {
+  listBusinessCalendars(
+    organizationId: string,
+  ): Promise<readonly BusinessCalendarSummary[]>;
+  listDocumentTypes(
+    organizationId: string,
+  ): Promise<readonly DocumentTypeSummary[]>;
   saveBusinessCalendar(
     input: BusinessCalendarInput & {
       readonly id: string;
@@ -39,6 +64,14 @@ export class WorkflowConfigurationService {
   public constructor(
     private readonly repository: WorkflowConfigurationRepository,
   ) {}
+
+  public listBusinessCalendars(organizationId: string) {
+    return this.repository.listBusinessCalendars(organizationId);
+  }
+
+  public listDocumentTypes(organizationId: string) {
+    return this.repository.listDocumentTypes(organizationId);
+  }
 
   public async saveBusinessCalendar(
     organizationId: string,

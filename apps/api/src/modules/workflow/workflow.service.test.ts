@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   WorkflowRevisionConflictError,
+  PublishedWorkflowImmutableError,
   WorkflowService,
   type StoredDraft,
   type WorkflowRepository,
@@ -14,14 +15,19 @@ const draft: StoredDraft = {
   automaticApprovalEnabled: false,
   allowRequesterSelfApproval: false,
   allowNoStageAutomaticApproval: false,
+  formSections: [],
+  fieldConditions: [],
   stages: [],
 };
 const repository = (
   overrides: Partial<WorkflowRepository> = {},
 ): WorkflowRepository => ({
+  list: () => Promise.resolve([]),
+  create: () => Promise.resolve(true),
   getDraft: () => Promise.resolve(draft),
   replaceDraft: () => Promise.resolve("UPDATED"),
   validateReferences: () => Promise.resolve([]),
+  previewAssignments: () => Promise.resolve([]),
   publish: () => Promise.resolve("PUBLISHED"),
   ...overrides,
 });
@@ -53,8 +59,11 @@ describe("WorkflowService", () => {
             position: 1,
             completionPolicy: "ANY" as const,
             dueDuration: null,
+            businessCalendarId: null,
             activationCondition: null,
             approvers: [],
+            reminders: [],
+            escalations: [],
           },
           {
             id: "s2",
@@ -64,6 +73,7 @@ describe("WorkflowService", () => {
             position: 2,
             completionPolicy: "ANY" as const,
             dueDuration: null,
+            businessCalendarId: null,
             activationCondition: {
               kind: "comparison" as const,
               fieldId: amount,
@@ -71,6 +81,8 @@ describe("WorkflowService", () => {
               value: 5000,
             },
             approvers: [],
+            reminders: [],
+            escalations: [],
           },
         ],
       }),
@@ -91,5 +103,14 @@ describe("WorkflowService", () => {
     await expect(
       service.replaceDraft("o", "w", "v", draft),
     ).rejects.toBeInstanceOf(WorkflowRevisionConflictError);
+  });
+
+  it("rejects mutation of a published workflow version", async () => {
+    const service = new WorkflowService(
+      repository({ replaceDraft: () => Promise.resolve("IMMUTABLE") }),
+    );
+    await expect(
+      service.replaceDraft("o", "w", "v", draft),
+    ).rejects.toBeInstanceOf(PublishedWorkflowImmutableError);
   });
 });

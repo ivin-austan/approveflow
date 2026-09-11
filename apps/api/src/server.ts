@@ -21,6 +21,9 @@ import { WorkflowService } from "./modules/workflow/workflow.service.js";
 import { DrizzleWorkflowConfigurationRepository } from "./modules/workflow/configuration.repository.js";
 import { createWorkflowConfigurationRouter } from "./modules/workflow/configuration.routes.js";
 import { WorkflowConfigurationService } from "./modules/workflow/configuration.service.js";
+import { DrizzleApproverOptionRepository } from "./modules/workflow/approver-options.repository.js";
+import { createApproverOptionRouter } from "./modules/workflow/approver-options.routes.js";
+import { ApproverOptionService } from "./modules/workflow/approver-options.service.js";
 
 const environment = parseServerEnvironment(process.env);
 const { db } = createDatabase(environment.DATABASE_URL);
@@ -41,6 +44,9 @@ const administrationService = new AdministrationService(
 const workflowService = new WorkflowService(new DrizzleWorkflowRepository(db));
 const workflowConfigurationService = new WorkflowConfigurationService(
   new DrizzleWorkflowConfigurationRepository(db),
+);
+const approverOptionService = new ApproverOptionService(
+  new DrizzleApproverOptionRepository(db),
 );
 const app = createApp({
   webOrigin: environment.WEB_ORIGIN,
@@ -67,6 +73,11 @@ const app = createApp({
   ),
   workflowConfigurationRouter: createWorkflowConfigurationRouter(
     workflowConfigurationService,
+    accessTokens,
+    tenantRepository,
+  ),
+  approverOptionRouter: createApproverOptionRouter(
+    approverOptionService,
     accessTokens,
     tenantRepository,
   ),

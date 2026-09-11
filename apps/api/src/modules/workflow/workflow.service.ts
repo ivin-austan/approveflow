@@ -1,10 +1,11 @@
-import { evaluateCondition } from "./condition.js";
-import type { ReplaceDraft } from "./workflow.schemas.js";
+import { randomUUID } from "node:crypto";
+import { evaluateCondition, referencedFieldIds } from "./condition.js";
+import type { CreateWorkflow, ReplaceDraft } from "./workflow.schemas.js";
 
 export interface ValidationIssue {
   readonly code: string;
   readonly severity: "ERROR";
-  readonly entityType: "WORKFLOW" | "STAGE" | "STAGE_APPROVER";
+  readonly entityType: "WORKFLOW" | "FORM_FIELD" | "STAGE" | "STAGE_APPROVER";
   readonly entityId: string;
   readonly path: string;
   readonly message: string;
@@ -16,8 +17,35 @@ export type StoredDraft = ReplaceDraft & {
   readonly revision: number;
   readonly automaticApprovalEnabled: boolean;
 };
+export interface AssignmentPreview {
+  readonly assignmentId: string;
+  readonly status: "RESOLVED" | "UNRESOLVED";
+  readonly memberships: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly email: string;
+  }[];
+}
 
 export interface WorkflowRepository {
+  list(organizationId: string): Promise<
+    readonly {
+      readonly id: string;
+      readonly documentTypeId: string;
+      readonly name: string;
+      readonly description: string | null;
+      readonly status: "ACTIVE" | "ARCHIVED";
+      readonly currentPublishedVersionId: string | null;
+    }[]
+  >;
+  create(
+    input: CreateWorkflow & {
+      readonly id: string;
+      readonly versionId: string;
+      readonly organizationId: string;
+      readonly membershipId: string;
+    },
+  ): Promise<boolean>;
   getDraft(
     organizationId: string,
     workflowId: string,
@@ -34,6 +62,11 @@ export interface WorkflowRepository {
     organizationId: string,
     draft: StoredDraft,
   ): Promise<readonly ValidationIssue[]>;
+  previewAssignments(
+    organizationId: string,
+    draft: StoredDraft,
+    answers: Readonly<Record<string, unknown>>,
+  ): Promise<readonly AssignmentPreview[]>;
   publish(input: {
     readonly organizationId: string;
     readonly workflowId: string;
@@ -54,6 +87,28 @@ export class InvalidWorkflowError extends Error {
 
 export class WorkflowService {
   public constructor(private readonly repository: WorkflowRepository) {}
+
+  public list(organizationId: string) {
+    return this.repository.list(organizationId);
+  }
+
+  public async create(
+    organizationId: string,
+    membershipId: string,
+    input: CreateWorkflow,
+  ) {
+    const id = randomUUID();
+    const versionId = randomUUID();
+    const created = await this.repository.create({
+      ...input,
+      id,
+      versionId,
+      organizationId,
+      membershipId,
+    });
+    if (!created) throw new WorkflowNotFoundError("Document type not found");
+    return { id, draftVersionId: versionId };
+  }
 
   public async replaceDraft(
     organizationId: string,
@@ -118,9 +173,21 @@ export class WorkflowService {
         ? evaluateCondition(stage.activationCondition, answers)
         : ("MATCHED" as const),
     }));
+    const assignments = await this.repository.previewAssignments(
+      organizationId,
+      draft,
+      answers,
+    );
     const included = stages.filter((stage) => stage.result === "MATCHED");
     return {
-      stages,
+      stages: stages.map((stage) => ({
+        ...stage,
+        assignments: assignments.filter((item) =>
+          draft.stages
+            .find((candidate) => candidate.id === stage.id)
+            ?.approvers.some((approver) => approver.id === item.assignmentId),
+        ),
+      })),
       finalStageId: included.at(-1)?.id ?? null,
       automaticApproval:
         included.length === 0 &&
@@ -169,13 +236,12 @@ export class WorkflowService {
   }
 
   private structuralIssues(draft: StoredDraft): ValidationIssue[] {
-    if (
+    const issues: ValidationIssue[] = [];
+    if (!(
       draft.stages.length > 0 ||
       (draft.allowNoStageAutomaticApproval && draft.automaticApprovalEnabled)
-    )
-      return [];
-    return [
-      {
+    ))
+      issues.push({
         code: "STAGE_REQUIRED",
         severity: "ERROR",
         entityType: "WORKFLOW",
@@ -183,7 +249,43 @@ export class WorkflowService {
         path: "stages",
         message:
           "At least one approval stage is required unless automatic approval is enabled.",
-      },
-    ];
+      });
+    const fieldIds = new Set(
+      draft.formSections.flatMap((section) =>
+        section.fields.map((field) => field.id),
+      ),
+    );
+    for (const item of draft.fieldConditions) {
+      if (
+        !fieldIds.has(item.targetFormFieldId) ||
+        [...referencedFieldIds(item.condition)].some((id) => !fieldIds.has(id))
+      )
+        issues.push({
+          code: "INVALID_FIELD_CONDITION_REFERENCE",
+          severity: "ERROR",
+          entityType: "FORM_FIELD",
+          entityId: item.targetFormFieldId,
+          path: "fieldConditions",
+          message:
+            "Field condition references must belong to this workflow version.",
+        });
+    }
+    for (const stage of draft.stages)
+      if (
+        stage.activationCondition &&
+        [...referencedFieldIds(stage.activationCondition)].some(
+          (id) => !fieldIds.has(id),
+        )
+      )
+        issues.push({
+          code: "INVALID_STAGE_CONDITION_REFERENCE",
+          severity: "ERROR",
+          entityType: "STAGE",
+          entityId: stage.id,
+          path: `stages.${String(stage.position - 1)}.activationCondition`,
+          message:
+            "Stage condition references must belong to this workflow version.",
+        });
+    return issues;
   }
 }

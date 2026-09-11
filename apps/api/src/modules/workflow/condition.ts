@@ -146,6 +146,18 @@ export function evaluateCondition(
   }
 }
 
+export function referencedFieldIds(condition: Condition): ReadonlySet<string> {
+  const ids = new Set<string>();
+  const visit = (node: Condition): void => {
+    if (node.kind === "comparison" || node.kind === "isEmpty")
+      ids.add(node.fieldId);
+    else if (node.kind === "group") node.conditions.forEach(visit);
+    else visit(node.condition);
+  };
+  visit(condition);
+  return ids;
+}
+
 function compare(
   left: unknown,
   operator: z.infer<typeof comparisonOperatorSchema>,

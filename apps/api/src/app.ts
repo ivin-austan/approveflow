@@ -21,6 +21,7 @@ interface AppOptions {
   readonly administrationRouter?: Router;
   readonly workflowRouter?: Router;
   readonly workflowConfigurationRouter?: Router;
+  readonly approverOptionRouter?: Router;
 }
 
 export function createApp(options: string | AppOptions) {
@@ -62,6 +63,8 @@ export function createApp(options: string | AppOptions) {
   if (settings.workflowRouter) app.use("/api/v1", settings.workflowRouter);
   if (settings.workflowConfigurationRouter)
     app.use("/api/v1", settings.workflowConfigurationRouter);
+  if (settings.approverOptionRouter)
+    app.use("/api/v1", settings.approverOptionRouter);
 
   app.use((request, response) => {
     const body: ApiError = {

@@ -1,0 +1,377 @@
+openapi: 3.1.0
+info:
+  title: ApproveFlow workflow configuration API
+  version: 4.0.0
+  description: Phase 4 tenant-scoped workflow, form, approval-stage, approver-option, calendar, and document-type contracts.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /organizations/{organizationId}/workflows:
+    parameters: [{ $ref: "#/components/parameters/OrganizationId" }]
+    get:
+      summary: List workflows
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Success" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      summary: Create a workflow and its initial draft
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/CreateWorkflow" } },
+            },
+        }
+      responses:
+        {
+          "201": { $ref: "#/components/responses/Success" },
+          "400": { $ref: "#/components/responses/Error" },
+        }
+  /organizations/{organizationId}/workflows/{workflowId}/versions/{versionId}:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        { $ref: "#/components/parameters/WorkflowId" },
+        { $ref: "#/components/parameters/VersionId" },
+      ]
+    get:
+      summary: Read an editable workflow draft
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Success" },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+    put:
+      summary: Atomically replace a draft using optimistic revision control
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/WorkflowDraft" } },
+            },
+        }
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Success" },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /organizations/{organizationId}/workflows/{workflowId}/versions/{versionId}/validate:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        { $ref: "#/components/parameters/WorkflowId" },
+        { $ref: "#/components/parameters/VersionId" },
+      ]
+    post:
+      summary: Validate a workflow for publication
+      responses: { "200": { $ref: "#/components/responses/Success" } }
+  /organizations/{organizationId}/workflows/{workflowId}/versions/{versionId}/preview:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        { $ref: "#/components/parameters/WorkflowId" },
+        { $ref: "#/components/parameters/VersionId" },
+      ]
+    post:
+      summary: Preview the applicable ordered path for representative answers
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [answers],
+                      properties:
+                        {
+                          answers: { type: object, additionalProperties: true },
+                        },
+                    },
+                },
+            },
+        }
+      responses: { "200": { $ref: "#/components/responses/Success" } }
+  /organizations/{organizationId}/workflows/{workflowId}/versions/{versionId}/publish:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        { $ref: "#/components/parameters/WorkflowId" },
+        { $ref: "#/components/parameters/VersionId" },
+      ]
+    post:
+      summary: Transactionally publish an immutable workflow version
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    {
+                      type: object,
+                      required: [expectedRevision],
+                      properties:
+                        { expectedRevision: { type: integer, minimum: 1 } },
+                    },
+                },
+            },
+        }
+      responses:
+        {
+          "204": { description: Published },
+          "409": { $ref: "#/components/responses/Error" },
+          "422": { $ref: "#/components/responses/Error" },
+        }
+  /organizations/{organizationId}/approver-options/{optionType}:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        {
+          name: optionType,
+          in: path,
+          required: true,
+          schema: { enum: [memberships, roles, departments] },
+        },
+      ]
+    get:
+      summary: List tenant-scoped assignment selector options
+      responses: { "200": { $ref: "#/components/responses/Success" } }
+  /organizations/{organizationId}/business-calendars:
+    parameters: [{ $ref: "#/components/parameters/OrganizationId" }]
+    get:
+      {
+        summary: List business calendars,
+        responses: { "200": { $ref: "#/components/responses/Success" } },
+      }
+    post:
+      {
+        summary: Create a business calendar,
+        responses: { "201": { $ref: "#/components/responses/Success" } },
+      }
+  /organizations/{organizationId}/business-calendars/{calendarId}:
+    parameters:
+      [
+        { $ref: "#/components/parameters/OrganizationId" },
+        {
+          name: calendarId,
+          in: path,
+          required: true,
+          schema: { type: string, format: uuid },
+        },
+      ]
+    patch:
+      {
+        summary: Update a business calendar with expectedRevision,
+        responses:
+          {
+            "200": { $ref: "#/components/responses/Success" },
+            "409": { $ref: "#/components/responses/Error" },
+          },
+      }
+  /organizations/{organizationId}/document-types:
+    parameters: [{ $ref: "#/components/parameters/OrganizationId" }]
+    get:
+      {
+        summary: List document types,
+        responses: { "200": { $ref: "#/components/responses/Success" } },
+      }
+    post:
+      {
+        summary: Create a document type,
+        responses: { "201": { $ref: "#/components/responses/Success" } },
+      }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    OrganizationId:
+      {
+        name: organizationId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    WorkflowId:
+      {
+        name: workflowId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    VersionId:
+      {
+        name: versionId,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+  responses:
+    Success:
+      {
+        description: Standard success envelope,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [data, meta],
+                    properties: { data: {}, meta: { type: object } },
+                  },
+              },
+          },
+      }
+    Error:
+      {
+        description: Standard safe error envelope,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [error],
+                    properties:
+                      {
+                        error:
+                          {
+                            type: object,
+                            required: [code, message],
+                            properties:
+                              {
+                                code: { type: string },
+                                message: { type: string },
+                                details: { type: object },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+      }
+  schemas:
+    CreateWorkflow:
+      type: object
+      additionalProperties: false
+      required: [documentTypeId, name, description]
+      properties:
+        {
+          documentTypeId: { type: string, format: uuid },
+          name: { type: string, minLength: 1, maxLength: 120 },
+          description: { type: [string, "null"], maxLength: 1000 },
+        }
+    Assignment:
+      oneOf:
+        - {
+            type: object,
+            required: [id, assignmentType, membershipId, displayOrder],
+            properties:
+              {
+                id: { type: string, format: uuid },
+                assignmentType: { const: MEMBERSHIP },
+                membershipId: { type: string, format: uuid },
+                displayOrder: { type: integer },
+              },
+          }
+        - {
+            type: object,
+            required: [id, assignmentType, roleId, displayOrder],
+            properties:
+              {
+                id: { type: string, format: uuid },
+                assignmentType: { const: ROLE },
+                roleId: { type: string, format: uuid },
+                displayOrder: { type: integer },
+              },
+          }
+        - {
+            type: object,
+            required: [id, assignmentType, departmentId, roleId, displayOrder],
+            properties:
+              {
+                id: { type: string, format: uuid },
+                assignmentType: { const: DEPARTMENT_ROLE },
+                departmentId: { type: string, format: uuid },
+                roleId: { type: string, format: uuid },
+                displayOrder: { type: integer },
+              },
+          }
+        - {
+            type: object,
+            required: [id, assignmentType, displayOrder],
+            properties:
+              {
+                id: { type: string, format: uuid },
+                assignmentType: { const: REQUESTER_MANAGER },
+                displayOrder: { type: integer },
+              },
+          }
+        - {
+            type: object,
+            required: [id, assignmentType, formFieldId, displayOrder],
+            properties:
+              {
+                id: { type: string, format: uuid },
+                assignmentType: { const: FORM_FIELD_USER },
+                formFieldId: { type: string, format: uuid },
+                displayOrder: { type: integer },
+              },
+          }
+      discriminator: { propertyName: assignmentType }
+    WorkflowDraft:
+      type: object
+      additionalProperties: false
+      required:
+        [
+          expectedRevision,
+          allowRequesterSelfApproval,
+          allowNoStageAutomaticApproval,
+          formSections,
+          fieldConditions,
+          stages,
+        ]
+      properties:
+        expectedRevision: { type: integer, minimum: 1 }
+        allowRequesterSelfApproval: { type: boolean }
+        allowNoStageAutomaticApproval: { type: boolean }
+        formSections: { type: array, maxItems: 20, items: { type: object } }
+        fieldConditions: { type: array, maxItems: 200, items: { type: object } }
+        stages:
+          {
+            type: array,
+            maxItems: 20,
+            items:
+              {
+                type: object,
+                required: [id, name, position, completionPolicy, approvers],
+                properties:
+                  {
+                    id: { type: string, format: uuid },
+                    name: { type: string },
+                    position: { type: integer, minimum: 1 },
+                    completionPolicy: { enum: [ANY, ALL] },
+                    businessCalendarId:
+                      { type: [string, "null"], format: uuid },
+                    approvers:
+                      {
+                        type: array,
+                        minItems: 1,
+                        items: { $ref: "#/components/schemas/Assignment" },
+                      },
+                  },
+              },
+          }

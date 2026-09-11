@@ -223,6 +223,13 @@ CREATE TABLE "workflows" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX "business_calendars_organization_id_unique" ON "business_calendars" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "document_types_organization_id_unique" ON "document_types" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "form_fields_organization_id_unique" ON "form_fields" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "form_sections_organization_id_unique" ON "form_sections" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_stages_organization_id_unique" ON "workflow_stages" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflow_versions_organization_id_unique" ON "workflow_versions" USING btree ("organization_id","id");--> statement-breakpoint
+CREATE UNIQUE INDEX "workflows_organization_id_unique" ON "workflows" USING btree ("organization_id","id");--> statement-breakpoint
 ALTER TABLE "business_calendar_holidays" ADD CONSTRAINT "business_calendar_holidays_calendar_tenant_fk" FOREIGN KEY ("organization_id","business_calendar_id") REFERENCES "public"."business_calendars"("organization_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "business_calendar_work_periods" ADD CONSTRAINT "business_calendar_work_periods_calendar_tenant_fk" FOREIGN KEY ("organization_id","business_calendar_id") REFERENCES "public"."business_calendars"("organization_id","id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "business_calendars" ADD CONSTRAINT "business_calendars_organization_id_organizations_id_fk" FOREIGN KEY ("organization_id") REFERENCES "public"."organizations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -254,27 +261,20 @@ ALTER TABLE "workflows" ADD CONSTRAINT "workflows_creator_tenant_fk" FOREIGN KEY
 CREATE UNIQUE INDEX "business_calendar_holidays_date_unique" ON "business_calendar_holidays" USING btree ("business_calendar_id","local_date");--> statement-breakpoint
 CREATE UNIQUE INDEX "business_calendar_work_periods_unique" ON "business_calendar_work_periods" USING btree ("business_calendar_id","weekday","local_start_time","local_end_time");--> statement-breakpoint
 CREATE UNIQUE INDEX "business_calendars_organization_name_unique" ON "business_calendars" USING btree ("organization_id","name");--> statement-breakpoint
-CREATE UNIQUE INDEX "business_calendars_organization_id_unique" ON "business_calendars" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "business_calendars_default_unique" ON "business_calendars" USING btree ("organization_id") WHERE "business_calendars"."is_default" = true;--> statement-breakpoint
 CREATE UNIQUE INDEX "document_types_organization_name_unique" ON "document_types" USING btree ("organization_id","name");--> statement-breakpoint
 CREATE UNIQUE INDEX "document_types_organization_code_unique" ON "document_types" USING btree ("organization_id","code");--> statement-breakpoint
-CREATE UNIQUE INDEX "document_types_organization_id_unique" ON "document_types" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "field_options_field_value_unique" ON "field_options" USING btree ("form_field_id","stable_value");--> statement-breakpoint
 CREATE UNIQUE INDEX "field_options_field_position_unique" ON "field_options" USING btree ("form_field_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "form_fields_version_stable_key_unique" ON "form_fields" USING btree ("workflow_version_id","stable_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "form_fields_section_position_unique" ON "form_fields" USING btree ("form_section_id","position");--> statement-breakpoint
-CREATE UNIQUE INDEX "form_fields_organization_id_unique" ON "form_fields" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "form_sections_version_stable_key_unique" ON "form_sections" USING btree ("workflow_version_id","stable_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "form_sections_version_position_unique" ON "form_sections" USING btree ("workflow_version_id","position");--> statement-breakpoint
-CREATE UNIQUE INDEX "form_sections_organization_id_unique" ON "form_sections" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "stage_approvers_stage_order_unique" ON "stage_approvers" USING btree ("workflow_stage_id","display_order");--> statement-breakpoint
 CREATE UNIQUE INDEX "stage_escalation_rules_stage_sequence_unique" ON "stage_escalation_rules" USING btree ("workflow_stage_id","sequence");--> statement-breakpoint
 CREATE UNIQUE INDEX "stage_reminder_rules_stage_sequence_unique" ON "stage_reminder_rules" USING btree ("workflow_stage_id","sequence");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_stages_version_position_unique" ON "workflow_stages" USING btree ("workflow_version_id","position");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_stages_organization_id_unique" ON "workflow_stages" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE INDEX "workflow_stages_tenant_version_position_idx" ON "workflow_stages" USING btree ("organization_id","workflow_version_id","position");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_versions_organization_workflow_number_unique" ON "workflow_versions" USING btree ("organization_id","workflow_id","version_number");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflow_versions_organization_id_unique" ON "workflow_versions" USING btree ("organization_id","id");--> statement-breakpoint
 CREATE UNIQUE INDEX "workflow_versions_one_draft_unique" ON "workflow_versions" USING btree ("workflow_id") WHERE "workflow_versions"."status" = 'DRAFT';--> statement-breakpoint
 CREATE UNIQUE INDEX "workflows_organization_document_type_unique" ON "workflows" USING btree ("organization_id","document_type_id");--> statement-breakpoint
-CREATE UNIQUE INDEX "workflows_organization_id_unique" ON "workflows" USING btree ("organization_id","id");

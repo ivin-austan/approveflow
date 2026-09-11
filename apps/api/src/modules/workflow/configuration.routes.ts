@@ -59,6 +59,18 @@ export function createWorkflowConfigurationRouter(
   const router = Router();
   router.use(authenticate(verifier));
   router.use(resolveTenant(tenantRepository));
+  router.get(
+    "/organizations/:organizationId/business-calendars",
+    requirePermission("organization.read"),
+    asyncHandler(async (request, response) => {
+      response.json(
+        success(
+          request,
+          await service.listBusinessCalendars(organization(request)),
+        ),
+      );
+    }),
+  );
   router.post(
     "/organizations/:organizationId/business-calendars",
     requirePermission("organization.manage"),
@@ -119,6 +131,18 @@ export function createWorkflowConfigurationRouter(
       } catch (error) {
         translate(error);
       }
+    }),
+  );
+  router.get(
+    "/organizations/:organizationId/document-types",
+    requirePermission("organization.read"),
+    asyncHandler(async (request, response) => {
+      response.json(
+        success(
+          request,
+          await service.listDocumentTypes(organization(request)),
+        ),
+      );
     }),
   );
   return router;
