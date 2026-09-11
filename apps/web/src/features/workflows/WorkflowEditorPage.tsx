@@ -298,6 +298,191 @@ function FormBuilder({
                     </button>
                   </div>
                 </div>
+                {(field.type === "SINGLE_SELECT" ||
+                  field.type === "MULTI_SELECT") && (
+                  <fieldset className="mt-3 rounded-md border border-slate-200 bg-white p-3">
+                    <legend className="px-1 text-sm font-semibold">
+                      Options
+                    </legend>
+                    <div className="space-y-2">
+                      {field.options.map((option, optionIndex) => (
+                        <div
+                          className="grid items-end gap-2 md:grid-cols-[1fr_1fr_auto]"
+                          key={option.id}
+                        >
+                          <label className="field-label">
+                            Label
+                            <input
+                              className="field-input"
+                              value={option.label}
+                              onChange={(event) => {
+                                updateSection(section.id, (current) => ({
+                                  ...current,
+                                  fields: current.fields.map((candidate) =>
+                                    candidate.id === field.id
+                                      ? {
+                                          ...candidate,
+                                          options: candidate.options.map(
+                                            (item) =>
+                                              item.id === option.id
+                                                ? {
+                                                    ...item,
+                                                    label: event.target.value,
+                                                  }
+                                                : item,
+                                          ),
+                                        }
+                                      : candidate,
+                                  ),
+                                }));
+                              }}
+                            />
+                          </label>
+                          <label className="field-label">
+                            Stable value
+                            <input
+                              className="field-input"
+                              value={option.stableValue}
+                              onChange={(event) => {
+                                updateSection(section.id, (current) => ({
+                                  ...current,
+                                  fields: current.fields.map((candidate) =>
+                                    candidate.id === field.id
+                                      ? {
+                                          ...candidate,
+                                          options: candidate.options.map(
+                                            (item) =>
+                                              item.id === option.id
+                                                ? {
+                                                    ...item,
+                                                    stableValue:
+                                                      event.target.value,
+                                                  }
+                                                : item,
+                                          ),
+                                        }
+                                      : candidate,
+                                  ),
+                                }));
+                              }}
+                            />
+                          </label>
+                          <div className="flex">
+                            <button
+                              aria-label={`Move ${option.label} up`}
+                              className="icon-button"
+                              disabled={optionIndex === 0}
+                              onClick={() => {
+                                updateSection(section.id, (current) => ({
+                                  ...current,
+                                  fields: current.fields.map((candidate) =>
+                                    candidate.id === field.id
+                                      ? {
+                                          ...candidate,
+                                          options: arrayMove(
+                                            candidate.options,
+                                            optionIndex,
+                                            optionIndex - 1,
+                                          ).map((item, index) => ({
+                                            ...item,
+                                            position: index + 1,
+                                          })),
+                                        }
+                                      : candidate,
+                                  ),
+                                }));
+                              }}
+                            >
+                              <ArrowUp size={17} />
+                            </button>
+                            <button
+                              aria-label={`Move ${option.label} down`}
+                              className="icon-button"
+                              disabled={
+                                optionIndex === field.options.length - 1
+                              }
+                              onClick={() => {
+                                updateSection(section.id, (current) => ({
+                                  ...current,
+                                  fields: current.fields.map((candidate) =>
+                                    candidate.id === field.id
+                                      ? {
+                                          ...candidate,
+                                          options: arrayMove(
+                                            candidate.options,
+                                            optionIndex,
+                                            optionIndex + 1,
+                                          ).map((item, index) => ({
+                                            ...item,
+                                            position: index + 1,
+                                          })),
+                                        }
+                                      : candidate,
+                                  ),
+                                }));
+                              }}
+                            >
+                              <ArrowDown size={17} />
+                            </button>
+                            <button
+                              aria-label={`Delete ${option.label}`}
+                              className="icon-button danger"
+                              disabled={field.options.length === 1}
+                              onClick={() => {
+                                updateSection(section.id, (current) => ({
+                                  ...current,
+                                  fields: current.fields.map((candidate) =>
+                                    candidate.id === field.id
+                                      ? {
+                                          ...candidate,
+                                          options: candidate.options
+                                            .filter(
+                                              (item) => item.id !== option.id,
+                                            )
+                                            .map((item, index) => ({
+                                              ...item,
+                                              position: index + 1,
+                                            })),
+                                        }
+                                      : candidate,
+                                  ),
+                                }));
+                              }}
+                            >
+                              <Trash2 size={17} />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      className="button-secondary mt-3"
+                      onClick={() => {
+                        updateSection(section.id, (current) => ({
+                          ...current,
+                          fields: current.fields.map((candidate) =>
+                            candidate.id === field.id
+                              ? {
+                                  ...candidate,
+                                  options: [
+                                    ...candidate.options,
+                                    {
+                                      id: uid(),
+                                      label: `Option ${String(candidate.options.length + 1)}`,
+                                      stableValue: `option${String(candidate.options.length + 1)}`,
+                                      position: candidate.options.length + 1,
+                                    },
+                                  ],
+                                }
+                              : candidate,
+                          ),
+                        }));
+                      }}
+                    >
+                      <Plus size={17} /> Add option
+                    </button>
+                  </fieldset>
+                )}
                 {issues
                   .filter((i) => i.entityId === field.id)
                   .map((i) => (

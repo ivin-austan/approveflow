@@ -200,4 +200,69 @@ describe("WorkflowEditorPage", () => {
       );
     });
   });
+
+  it("edits select choices and keeps their positions contiguous", async () => {
+    mockApi({
+      ...draft,
+      formSections: [
+        {
+          id: "77777777-7777-4777-8777-777777777777",
+          stableKey: "request",
+          name: "Request",
+          description: null,
+          position: 1,
+          fields: [
+            {
+              id: "88888888-8888-4888-8888-888888888888",
+              stableKey: "priority",
+              label: "Priority",
+              type: "SINGLE_SELECT",
+              description: null,
+              required: true,
+              position: 1,
+              config: {},
+              options: [
+                {
+                  id: "99999999-9999-4999-8999-999999999999",
+                  stableValue: "normal",
+                  label: "Normal",
+                  position: 1,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[
+            `/organizations/${ids.organization}/workflows/${ids.workflow}/versions/${ids.version}`,
+          ]}
+        >
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/workflows/:workflowId/versions/:versionId"
+              element={<WorkflowEditorPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Add option" }));
+    expect(screen.getByDisplayValue("Option 2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Move Option 2 up" }));
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Move Option 2 up" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Move Normal down" }),
+    ).toBeDisabled();
+  });
 });
