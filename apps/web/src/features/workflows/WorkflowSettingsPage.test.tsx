@@ -19,6 +19,83 @@ afterEach(() => {
 });
 
 describe("WorkflowSettingsPage", () => {
+  it("submits configured workdays, hours, and holidays", async () => {
+    const fetchMock = vi.fn((_input: RequestInfo | URL, init?: RequestInit) =>
+      Promise.resolve(
+        new Response(JSON.stringify({ data: [] }), {
+          status: init?.method === "POST" ? 201 : 200,
+          headers: { "content-type": "application/json" },
+        }),
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <MemoryRouter
+          initialEntries={[
+            `/organizations/${organizationId}/workflow-settings`,
+          ]}
+        >
+          <Routes>
+            <Route
+              path="/organizations/:organizationId/workflow-settings"
+              element={<WorkflowSettingsPage />}
+            />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const calendarName = screen.getAllByLabelText("Name").at(0);
+    if (!calendarName) throw new Error("Calendar name input is missing");
+    fireEvent.change(calendarName, { target: { value: "Dubai office" } });
+    fireEvent.change(screen.getByLabelText("IANA timezone"), {
+      target: { value: "Asia/Dubai" },
+    });
+    fireEvent.change(screen.getByLabelText("Workday starts"), {
+      target: { value: "08:30" },
+    });
+    fireEvent.click(screen.getByLabelText("Fri"));
+    fireEvent.click(screen.getByRole("button", { name: "Add holiday" }));
+    fireEvent.change(screen.getByLabelText("Date"), {
+      target: { value: "2026-12-02" },
+    });
+    fireEvent.change(screen.getByLabelText("Holiday name"), {
+      target: { value: "National Day" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add calendar" }));
+
+    await waitFor(() => {
+      const request = fetchMock.mock.calls.find(
+        ([input, init]) =>
+          (input instanceof Request ? input.url : String(input)).endsWith(
+            "/business-calendars",
+          ) && init?.method === "POST",
+      );
+      const body = request?.[1]?.body;
+      if (typeof body !== "string") throw new Error("Request body is missing");
+      expect(JSON.parse(body) as unknown).toMatchObject({
+        timezone: "Asia/Dubai",
+        workPeriods: [
+          { weekday: 1, localStartTime: "08:30", localEndTime: "17:00" },
+          { weekday: 2 },
+          { weekday: 3 },
+          { weekday: 4 },
+        ],
+        holidays: [
+          {
+            localDate: "2026-12-02",
+            name: "National Day",
+            isWorkingDayOverride: false,
+          },
+        ],
+      });
+    });
+  });
+
   it("submits configurable numbering and automatic approval policy", async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = input instanceof Request ? input.url : String(input);
