@@ -50,7 +50,12 @@ export class DrizzleTenantRepository implements TenantRepository {
     organizationId: string,
   ): Promise<TenantContext | null> {
     const [membership] = await this.database
-      .select({ id: memberships.id })
+      .select({
+        id: memberships.id,
+        fullName: users.fullName,
+        email: users.email,
+        organizationName: organizations.name,
+      })
       .from(memberships)
       .innerJoin(
         organizations,
@@ -95,7 +100,10 @@ export class DrizzleTenantRepository implements TenantRepository {
       );
     return {
       userId,
+      fullName: membership.fullName,
+      email: membership.email,
       organizationId,
+      organizationName: membership.organizationName,
       membershipId: membership.id,
       permissions: new Set(permissionRows.map(({ key }) => key)),
     };

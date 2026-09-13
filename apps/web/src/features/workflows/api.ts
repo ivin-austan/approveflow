@@ -5,6 +5,7 @@ import type {
   WorkflowDraft,
   WorkflowSummary,
 } from "./types";
+import { authenticatedFetch } from "../auth/session";
 interface Envelope<T> {
   data: T;
 }
@@ -16,7 +17,7 @@ async function call<T>(
   const headers = new Headers(init?.headers);
   headers.set("content-type", "application/json");
   headers.set("x-organization-id", organizationId);
-  const response = await fetch(`/api/v1${url}`, {
+  const response = await authenticatedFetch(`/api/v1${url}`, {
     ...init,
     credentials: "include",
     headers,

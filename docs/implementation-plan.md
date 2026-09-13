@@ -2,9 +2,11 @@
 
 ## Document status
 
-- Phase: 1 - implementation planning
-- Status: awaiting approval
-- Current gate: do not begin Phase 2 until the Phase 1 correction is approved
+- Phase: 8 - release hardening
+- Status: implementation complete; release evidence in progress
+- Current gate: do not deploy or run production migrations until the Phase 8
+  PostgreSQL, browser-journey, accessibility, security, recovery, and
+  performance evidence is complete and separately approved
 
 ## Delivery principles
 
@@ -411,7 +413,6 @@ recorded defaults requires a Phase 1 design amendment.
 
 ## Approval gate
 
-Phase 2 must not begin until the corrected Phase 1 documents and recorded
-decisions above are reviewed and approved. No dependency installation,
-application scaffolding, production infrastructure, or database migration is
-authorized by this plan.
+Phases 2 through 8 have been implemented in the working tree. Deployment,
+production infrastructure changes, and production migrations remain prohibited
+until the Phase 8 release evidence is complete and separately approved.

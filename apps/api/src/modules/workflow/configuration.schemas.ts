@@ -56,6 +56,7 @@ export const documentTypeInputSchema = z
         excludedFieldIds: z.array(z.uuid()).max(200),
       })
       .strict(),
+    finalRecipientMembershipIds: z.array(z.uuid()).max(50).default([]),
     automaticApproval: z.discriminatedUnion("enabled", [
       z.object({ enabled: z.literal(false) }).strict(),
       z.object({ enabled: z.literal(true), after: durationSchema }).strict(),

@@ -12,10 +12,13 @@
     "format:write": "prettier --write .",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:integration": "pnpm --filter @approveflow/database exec vitest run src/tenant-isolation.integration.test.ts && pnpm --filter @approveflow/api exec vitest run src/modules/approval/approval.repository.integration.test.ts",
+    "test:e2e": "playwright test",
     "typecheck": "turbo run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "^9.35.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "^24.3.1",
     "drizzle-kit": "^0.31.10",
     "eslint": "^9.35.0",

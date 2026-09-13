@@ -1,0 +1,1 @@
+ALTER TABLE "request_number_sequences" ALTER COLUMN "next_value" SET DEFAULT 1;

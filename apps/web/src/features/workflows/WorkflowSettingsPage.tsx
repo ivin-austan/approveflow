@@ -51,6 +51,7 @@ const documentSchema = z.object({
     ),
   sequencePadding: z.number().int().min(1).max(12),
   approvedPdfRetentionYears: z.number().int().min(1).max(25),
+  finalRecipientMembershipIds: z.array(z.uuid()).max(50),
   automaticApprovalEnabled: z.boolean(),
   automaticApprovalAfterValue: z.number().int().positive().max(10_000),
   automaticApprovalAfterUnit: z.enum(["BUSINESS_HOURS", "BUSINESS_DAYS"]),
@@ -67,6 +68,10 @@ export function WorkflowSettingsPage() {
   const types = useQuery({
     queryKey: ["document-types", organizationId],
     queryFn: () => workflowApi.documentTypes(organizationId),
+  });
+  const memberships = useQuery({
+    queryKey: ["approver-memberships", organizationId],
+    queryFn: () => workflowApi.memberships(organizationId),
   });
   const calendarForm = useForm<CalendarForm>({
     resolver: zodResolver(calendarSchema),
@@ -92,6 +97,7 @@ export function WorkflowSettingsPage() {
       numberFormat: "{DEPARTMENT_CODE}-{DOCUMENT_TYPE_CODE}-{YEAR}-{SEQUENCE}",
       sequencePadding: 5,
       approvedPdfRetentionYears: 7,
+      finalRecipientMembershipIds: [],
       automaticApprovalEnabled: false,
       automaticApprovalAfterValue: 1,
       automaticApprovalAfterUnit: "BUSINESS_DAYS",
@@ -107,7 +113,7 @@ export function WorkflowSettingsPage() {
           className="text-blue-700 underline"
           to={`/organizations/${organizationId}/workflows`}
         >
-          ← Workflows
+          {"\u2190"} Workflows
         </Link>
         <p className="eyebrow mt-4">Administration</p>
         <h1 className="text-3xl font-bold">Workflow settings</h1>
@@ -269,7 +275,7 @@ export function WorkflowSettingsPage() {
                 <strong>{c.name}</strong>
                 <span className="ml-2 text-sm text-slate-600">
                   {c.timezone}
-                  {c.isDefault ? " · Default" : ""}
+                  {c.isDefault ? " \u00b7 Default" : ""}
                 </span>
               </li>
             ))}
@@ -333,7 +339,7 @@ export function WorkflowSettingsPage() {
                 className="field-input"
                 {...documentForm.register("businessCalendarId")}
               >
-                <option value="">Select…</option>
+                <option value="">Select...</option>
                 {calendars.data?.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
@@ -380,6 +386,27 @@ export function WorkflowSettingsPage() {
                 {...documentForm.register("automaticApprovalEnabled")}
               />
               Automatically approve incomplete stages after a threshold
+            </label>
+            <label className="field-label">
+              Final approval link recipients
+              <select
+                className="field-input min-h-28"
+                multiple
+                {...documentForm.register("finalRecipientMembershipIds")}
+              >
+                {memberships.data?.map((membership) => (
+                  <option key={membership.id} value={membership.id}>
+                    {membership.fullName ??
+                      membership.name ??
+                      membership.email ??
+                      membership.id}
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-slate-500">
+                These active members receive a secure sign-in link, never a PDF
+                attachment.
+              </span>
             </label>
             {automaticApprovalEnabled && (
               <div className="grid grid-cols-2 gap-3 rounded-md border border-amber-200 bg-amber-50 p-3">

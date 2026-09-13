@@ -1,0 +1,336 @@
+openapi: 3.1.0
+info:
+  title: ApproveFlow Runtime API
+  version: 0.8.0
+  description: Request, approval, artifact, delivery, dashboard, and audit contracts added in phases 5 through 8.
+servers:
+  - url: /api/v1
+security:
+  - bearerAuth: []
+paths:
+  /organizations/{organizationId}/requests:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+    get:
+      summary: List the current member's requests
+      responses:
+        "200":
+          $ref: "#/components/responses/RequestList"
+    post:
+      summary: Create a validated request draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDraft"
+      responses:
+        "201":
+          description: Draft created
+        "400":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/requests/{requestId}:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      summary: Get an authorized request summary
+      responses:
+        "200":
+          description: Request summary
+        "404":
+          $ref: "#/components/responses/Error"
+    put:
+      summary: Update a draft or returned request
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, title, answers]
+              properties:
+                expectedRevision: { type: integer, minimum: 1 }
+                title: { type: string, minLength: 1, maxLength: 200 }
+                answers: { type: object, additionalProperties: true }
+      responses:
+        "200":
+          description: Draft updated
+        "409":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/requests/{requestId}/submit:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/RequestId"
+      - $ref: "#/components/parameters/IdempotencyKey"
+    post:
+      summary: Submit a draft and allocate its immutable runtime path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expectedRevision, originatingDepartmentId]
+              properties:
+                expectedRevision: { type: integer, minimum: 1 }
+                originatingDepartmentId: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Submitted request or idempotent replay
+        "409":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/requests/{requestId}/resubmit:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/RequestId"
+      - $ref: "#/components/parameters/IdempotencyKey"
+    post:
+      summary: Reevaluate and restart a returned request in a new round
+      responses:
+        "200":
+          description: Resubmitted request
+        "409":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/requests/{requestId}/timeline:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/RequestId"
+    get:
+      summary: Get permission-aware approval progress and audit events
+      responses:
+        "200":
+          description: Request timeline with stages, tasks, and redacted audit payloads
+        "404":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/approvals/inbox:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+    get:
+      summary: List active tasks assigned to the current membership
+      responses:
+        "200":
+          description: Assigned approval tasks
+  /organizations/{organizationId}/approval-tasks/{taskId}/decisions:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/TaskId"
+      - $ref: "#/components/parameters/IdempotencyKey"
+    post:
+      summary: Approve, reject, or return an assigned task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action, expectedRequestRevision]
+              properties:
+                action: { enum: [APPROVE, REJECT, RETURN] }
+                expectedRequestRevision: { type: integer, minimum: 1 }
+                comment: { type: [string, "null"], maxLength: 4000 }
+      responses:
+        "204":
+          description: Decision accepted or replayed
+        "409":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/approval-tasks/{taskId}/reassignments:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/TaskId"
+      - $ref: "#/components/parameters/IdempotencyKey"
+    post:
+      summary: Reassign an active task while preserving its history
+      responses:
+        "204":
+          description: Reassignment accepted or replayed
+  /organizations/{organizationId}/artifacts/{artifactId}/access-grants:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/ArtifactId"
+    post:
+      summary: Issue a single-use five-minute artifact grant
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [purpose]
+              properties:
+                purpose: { enum: [VIEW, PRINT, DOWNLOAD] }
+      responses:
+        "201":
+          description: Short-lived grant
+  /organizations/{organizationId}/artifacts/{artifactId}/content:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/ArtifactId"
+      - name: purpose
+        in: query
+        required: true
+        schema: { enum: [VIEW, PRINT, DOWNLOAD] }
+      - name: x-artifact-grant
+        in: header
+        required: true
+        schema: { type: string }
+    get:
+      summary: Read hash-verified canonical PDF bytes
+      responses:
+        "200":
+          description: Canonical PDF
+          content:
+            application/pdf:
+              schema: { type: string, contentEncoding: binary }
+        "404":
+          $ref: "#/components/responses/Error"
+  /organizations/{organizationId}/artifacts/{artifactId}/retry:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/ArtifactId"
+    post:
+      summary: Retry exhausted artifact generation
+      responses:
+        "202": { description: Existing artifact queued }
+  /organizations/{organizationId}/artifacts/{artifactId}/legal-hold:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/ArtifactId"
+    put:
+      summary: Apply or release an artifact legal hold
+      responses:
+        "200": { description: Legal hold updated }
+  /organizations/{organizationId}/deliveries/{deliveryId}/reopen:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      summary: Reopen the existing permanently failed delivery
+      responses:
+        "202": { description: Delivery reopened }
+  /organizations/{organizationId}/document-types/{documentTypeId}/dashboard:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/DocumentTypeId"
+    get:
+      summary: List permission-scoped document rows and real metrics
+      parameters:
+        - $ref: "#/components/parameters/Cursor"
+        - name: status
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string, maxLength: 200 }
+        - name: sort
+          in: query
+          schema: { enum: [updatedAt, requestNumber, title] }
+        - name: direction
+          in: query
+          schema: { enum: [asc, desc] }
+      responses:
+        "200": { description: Dashboard page }
+  /organizations/{organizationId}/document-types/{documentTypeId}/dashboard/export:
+    parameters:
+      - $ref: "#/components/parameters/OrganizationId"
+      - $ref: "#/components/parameters/DocumentTypeId"
+    get:
+      summary: Export up to 10,000 authorized rows and append an audit event
+      responses:
+        "200":
+          description: CSV export
+          content:
+            text/csv:
+              schema: { type: string }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    OrganizationId:
+      name: organizationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TaskId:
+      name: taskId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ArtifactId:
+      name: artifactId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DocumentTypeId:
+      name: documentTypeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: idempotency-key
+      in: header
+      required: true
+      schema: { type: string, minLength: 8, maxLength: 200 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string, maxLength: 1000 }
+  schemas:
+    CreateDraft:
+      type: object
+      required: [workflowId, title, answers]
+      properties:
+        workflowId: { type: string, format: uuid }
+        title: { type: string, minLength: 1, maxLength: 200 }
+        answers: { type: object, additionalProperties: true }
+    RequestSummary:
+      type: object
+      required: [id, title, status, revision, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        requestNumber: { type: [string, "null"] }
+        title: { type: string }
+        status:
+          { enum: [DRAFT, IN_REVIEW, APPROVED, REJECTED, RETURNED, CANCELLED] }
+        revision: { type: integer }
+        currentStage: { type: [string, "null"] }
+        submittedAt: { type: [string, "null"], format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, correlationId]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            correlationId: { type: string }
+  responses:
+    RequestList:
+      description: Request list envelope
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              data:
+                type: array
+                items: { $ref: "#/components/schemas/RequestSummary" }
+    Error:
+      description: Standard error envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/ErrorEnvelope" }

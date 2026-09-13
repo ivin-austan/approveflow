@@ -24,6 +24,28 @@ import { WorkflowConfigurationService } from "./modules/workflow/configuration.s
 import { DrizzleApproverOptionRepository } from "./modules/workflow/approver-options.repository.js";
 import { createApproverOptionRouter } from "./modules/workflow/approver-options.routes.js";
 import { ApproverOptionService } from "./modules/workflow/approver-options.service.js";
+import { DrizzleRequestRepository } from "./modules/request/request.repository.js";
+import { createRequestRouter } from "./modules/request/request.routes.js";
+import { RequestService } from "./modules/request/request.service.js";
+import { DrizzleApprovalRepository } from "./modules/approval/approval.repository.js";
+import { createApprovalRouter } from "./modules/approval/approval.routes.js";
+import { ApprovalService } from "./modules/approval/approval.service.js";
+import { DrizzleArtifactRepository } from "./modules/artifact/artifact.repository.js";
+import {
+  ArtifactGrantService,
+  ArtifactOperationsService,
+} from "./modules/artifact/artifact.service.js";
+import { FileSystemArtifactStorage } from "./modules/artifact/filesystem.storage.js";
+import { createArtifactRouter } from "./modules/artifact/artifact.routes.js";
+import { DrizzleDeliveryRepository } from "./modules/delivery/delivery.repository.js";
+import { createDeliveryRouter } from "./modules/delivery/delivery.routes.js";
+import { DeliveryOperationsService } from "./modules/delivery/delivery.service.js";
+import { DrizzleDashboardRepository } from "./modules/dashboard/dashboard.repository.js";
+import { createDashboardRouter } from "./modules/dashboard/dashboard.routes.js";
+import { DashboardService } from "./modules/dashboard/dashboard.service.js";
+import { DrizzleAuditRepository } from "./modules/audit/audit.repository.js";
+import { createAuditRouter } from "./modules/audit/audit.routes.js";
+import { AuditService } from "./modules/audit/audit.service.js";
 
 const environment = parseServerEnvironment(process.env);
 const { db } = createDatabase(environment.DATABASE_URL);
@@ -48,6 +70,13 @@ const workflowConfigurationService = new WorkflowConfigurationService(
 const approverOptionService = new ApproverOptionService(
   new DrizzleApproverOptionRepository(db),
 );
+const requestService = new RequestService(new DrizzleRequestRepository(db));
+const approvalService = new ApprovalService(new DrizzleApprovalRepository(db));
+const artifactRepository = new DrizzleArtifactRepository(db);
+const artifactStorage = new FileSystemArtifactStorage(
+  environment.ARTIFACT_STORAGE_PATH,
+);
+const deliveryRepository = new DrizzleDeliveryRepository(db);
 const app = createApp({
   webOrigin: environment.WEB_ORIGIN,
   authRouter: createAuthRouter({
@@ -78,6 +107,38 @@ const app = createApp({
   ),
   approverOptionRouter: createApproverOptionRouter(
     approverOptionService,
+    accessTokens,
+    tenantRepository,
+  ),
+  requestRouter: createRequestRouter(
+    requestService,
+    accessTokens,
+    tenantRepository,
+  ),
+  approvalRouter: createApprovalRouter(
+    approvalService,
+    accessTokens,
+    tenantRepository,
+  ),
+  artifactRouter: createArtifactRouter(
+    new ArtifactGrantService(artifactRepository),
+    new ArtifactOperationsService(artifactRepository),
+    artifactStorage,
+    accessTokens,
+    tenantRepository,
+  ),
+  dashboardRouter: createDashboardRouter(
+    new DashboardService(new DrizzleDashboardRepository(db)),
+    accessTokens,
+    tenantRepository,
+  ),
+  deliveryRouter: createDeliveryRouter(
+    new DeliveryOperationsService(deliveryRepository),
+    accessTokens,
+    tenantRepository,
+  ),
+  auditRouter: createAuditRouter(
+    new AuditService(new DrizzleAuditRepository(db)),
     accessTokens,
     tenantRepository,
   ),

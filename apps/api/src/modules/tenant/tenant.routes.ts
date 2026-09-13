@@ -35,7 +35,11 @@ export function createTenantRouter(
       );
     response.json(
       success(request, {
+        userId: context.userId,
+        fullName: context.fullName,
+        email: context.email,
         organizationId: context.organizationId,
+        organizationName: context.organizationName,
         membershipId: context.membershipId,
         permissions: [...context.permissions].sort(),
       }),

@@ -1,6 +1,7 @@
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   boolean,
+  bigint,
   check,
   date,
   foreignKey,
@@ -96,6 +97,96 @@ export const escalationAction = pgEnum("escalation_action", [
   "NOTIFY",
   "RETURN_TO_INITIATOR",
 ]);
+export const requestStatus = pgEnum("request_status", [
+  "DRAFT",
+  "IN_REVIEW",
+  "APPROVED",
+  "REJECTED",
+  "RETURNED",
+  "CANCELLED",
+]);
+export const approvalRoundStatus = pgEnum("approval_round_status", [
+  "ACTIVE",
+  "COMPLETED",
+  "SUPERSEDED",
+]);
+export const runtimeStageStatus = pgEnum("runtime_stage_status", [
+  "PENDING",
+  "ACTIVE",
+  "COMPLETED",
+  "SKIPPED",
+]);
+export const approvalTaskStatus = pgEnum("approval_task_status", [
+  "PENDING",
+  "ACTIVE",
+  "APPROVED",
+  "REJECTED",
+  "RETURNED",
+  "SKIPPED",
+  "REASSIGNED",
+]);
+export const idempotencyStatus = pgEnum("idempotency_status", [
+  "PROCESSING",
+  "COMPLETED",
+]);
+export const outboxStatus = pgEnum("outbox_status", [
+  "PENDING",
+  "PROCESSING",
+  "PUBLISHED",
+  "FAILED",
+]);
+export const scheduledActionKind = pgEnum("scheduled_action_kind", [
+  "REMINDER",
+  "ESCALATION_NOTIFY",
+  "ESCALATION_RETURN",
+  "AUTOMATIC_APPROVAL",
+]);
+export const scheduledActionStatus = pgEnum("scheduled_action_status", [
+  "PENDING",
+  "PROCESSING",
+  "COMPLETED",
+  "CANCELLED",
+  "FAILED",
+]);
+export const artifactStatus = pgEnum("artifact_status", [
+  "PENDING",
+  "GENERATING",
+  "READY",
+  "RETRY_SCHEDULED",
+  "PERMANENTLY_FAILED",
+  "DELETING",
+  "DELETION_RETRY",
+  "DELETION_FAILED",
+  "DELETED",
+]);
+export const deliveryStatus = pgEnum("delivery_status", [
+  "PENDING",
+  "SENDING",
+  "ACCEPTED",
+  "RECONCILING",
+  "RETRY_SCHEDULED",
+  "PERMANENTLY_FAILED",
+]);
+export const deliveryMode = pgEnum("delivery_mode", [
+  "ATTACHMENT",
+  "LINK_ONLY",
+]);
+export const artifactGrantPurpose = pgEnum("artifact_grant_purpose", [
+  "VIEW",
+  "PRINT",
+  "DOWNLOAD",
+]);
+export const notificationDeliveryStatus = pgEnum(
+  "notification_delivery_status",
+  [
+    "PENDING",
+    "SENDING",
+    "ACCEPTED",
+    "RECONCILING",
+    "RETRY_SCHEDULED",
+    "PERMANENTLY_FAILED",
+  ],
+);
 
 export const users = pgTable(
   "users",
@@ -577,6 +668,35 @@ export const documentTypes = pgTable(
   ],
 );
 
+export const documentTypeRecipients = pgTable(
+  "document_type_recipients",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    documentTypeId: uuid("document_type_id").notNull(),
+    membershipId: uuid("membership_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("document_type_recipients_unique").on(
+      table.documentTypeId,
+      table.membershipId,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.documentTypeId],
+      foreignColumns: [documentTypes.organizationId, documentTypes.id],
+      name: "document_type_recipients_document_type_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.membershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "document_type_recipients_membership_tenant_fk",
+    }),
+  ],
+);
+
 export const workflows = pgTable(
   "workflows",
   {
@@ -1007,5 +1127,684 @@ export const stageEscalationRules = pgTable(
       "stage_escalation_rules_recipient_shape",
       sql`(${table.action} = 'NOTIFY' and ${table.recipientPolicy} is not null) or (${table.action} = 'RETURN_TO_INITIATOR' and ${table.recipientPolicy} is null)`,
     ),
+  ],
+);
+
+export const requests = pgTable(
+  "requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    workflowId: uuid("workflow_id").notNull(),
+    workflowVersionId: uuid("workflow_version_id").notNull(),
+    documentTypeId: uuid("document_type_id").notNull(),
+    requesterMembershipId: uuid("requester_membership_id").notNull(),
+    originatingDepartmentId: uuid("originating_department_id"),
+    requestNumber: text("request_number"),
+    title: text("title").notNull(),
+    status: requestStatus("status").notNull().default("DRAFT"),
+    revision: integer("revision").notNull().default(1),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("requests_organization_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    uniqueIndex("requests_organization_number_unique")
+      .on(table.organizationId, table.requestNumber)
+      .where(sql`${table.requestNumber} is not null`),
+    index("requests_requester_status_idx").on(
+      table.organizationId,
+      table.requesterMembershipId,
+      table.status,
+      table.updatedAt,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.workflowId],
+      foreignColumns: [workflows.organizationId, workflows.id],
+      name: "requests_workflow_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.workflowVersionId],
+      foreignColumns: [workflowVersions.organizationId, workflowVersions.id],
+      name: "requests_workflow_version_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.documentTypeId],
+      foreignColumns: [documentTypes.organizationId, documentTypes.id],
+      name: "requests_document_type_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.requesterMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "requests_requester_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.originatingDepartmentId],
+      foreignColumns: [departments.organizationId, departments.id],
+      name: "requests_department_tenant_fk",
+    }),
+    check(
+      "requests_submission_shape",
+      sql`(${table.status} = 'DRAFT' and ${table.requestNumber} is null and ${table.submittedAt} is null) or (${table.status} <> 'DRAFT' and ${table.requestNumber} is not null and ${table.submittedAt} is not null and ${table.originatingDepartmentId} is not null)`,
+    ),
+    check("requests_revision_positive", sql`${table.revision} > 0`),
+  ],
+);
+
+export const requestAnswers = pgTable(
+  "request_answers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    formFieldId: uuid("form_field_id").notNull(),
+    value: jsonb("value").$type<unknown>().notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("request_answers_request_field_unique").on(
+      table.requestId,
+      table.formFieldId,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "request_answers_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.formFieldId],
+      foreignColumns: [formFields.organizationId, formFields.id],
+      name: "request_answers_field_tenant_fk",
+    }),
+  ],
+);
+
+export const approvalRounds = pgTable(
+  "approval_rounds",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    roundNumber: integer("round_number").notNull(),
+    status: approvalRoundStatus("status").notNull().default("ACTIVE"),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("approval_rounds_organization_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    uniqueIndex("approval_rounds_request_number_unique").on(
+      table.requestId,
+      table.roundNumber,
+    ),
+    uniqueIndex("approval_rounds_one_active_unique")
+      .on(table.requestId)
+      .where(sql`${table.status} = 'ACTIVE'`),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "approval_rounds_request_tenant_fk",
+    }),
+    check("approval_rounds_number_positive", sql`${table.roundNumber} > 0`),
+  ],
+);
+
+export const runtimeStages = pgTable(
+  "runtime_stages",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    approvalRoundId: uuid("approval_round_id").notNull(),
+    sourceWorkflowStageId: uuid("source_workflow_stage_id").notNull(),
+    levelNumber: integer("level_number").notNull(),
+    name: text("name").notNull(),
+    description: text("description"),
+    instructions: text("instructions"),
+    completionPolicy: stageCompletionPolicy("completion_policy").notNull(),
+    isFinal: boolean("is_final").notNull().default(false),
+    status: runtimeStageStatus("status").notNull().default("PENDING"),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    dueAt: timestamp("due_at", { withTimezone: true }),
+    schedulingCompletedAt: timestamp("scheduling_completed_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("runtime_stages_organization_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    uniqueIndex("runtime_stages_round_level_unique").on(
+      table.approvalRoundId,
+      table.levelNumber,
+    ),
+    uniqueIndex("runtime_stages_round_source_unique").on(
+      table.approvalRoundId,
+      table.sourceWorkflowStageId,
+    ),
+    uniqueIndex("runtime_stages_round_final_unique")
+      .on(table.approvalRoundId)
+      .where(sql`${table.isFinal} = true`),
+    index("runtime_stages_request_status_idx").on(
+      table.organizationId,
+      table.requestId,
+      table.status,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "runtime_stages_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.approvalRoundId],
+      foreignColumns: [approvalRounds.organizationId, approvalRounds.id],
+      name: "runtime_stages_round_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.sourceWorkflowStageId],
+      foreignColumns: [workflowStages.organizationId, workflowStages.id],
+      name: "runtime_stages_source_tenant_fk",
+    }),
+    check("runtime_stages_level_positive", sql`${table.levelNumber} > 0`),
+  ],
+);
+
+export const scheduledStageActions = pgTable(
+  "scheduled_stage_actions",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    runtimeStageId: uuid("runtime_stage_id").notNull(),
+    sourceRuleId: uuid("source_rule_id"),
+    deduplicationKey: text("deduplication_key").notNull(),
+    kind: scheduledActionKind("kind").notNull(),
+    recipientPolicy: jsonb("recipient_policy").$type<Record<string, unknown>>(),
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }).notNull(),
+    status: scheduledActionStatus("status").notNull().default("PENDING"),
+    attempts: integer("attempts").notNull().default(0),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("scheduled_stage_actions_stage_dedup_unique").on(
+      table.runtimeStageId,
+      table.deduplicationKey,
+    ),
+    index("scheduled_stage_actions_due_idx").on(
+      table.status,
+      table.scheduledFor,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "scheduled_stage_actions_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.runtimeStageId],
+      foreignColumns: [runtimeStages.organizationId, runtimeStages.id],
+      name: "scheduled_stage_actions_stage_tenant_fk",
+    }),
+    check(
+      "scheduled_stage_actions_attempts_nonnegative",
+      sql`${table.attempts} >= 0`,
+    ),
+    check(
+      "scheduled_stage_actions_lease_shape",
+      sql`(${table.status} = 'PROCESSING' and ${table.leaseOwner} is not null and ${table.leaseExpiresAt} is not null) or (${table.status} <> 'PROCESSING')`,
+    ),
+  ],
+);
+
+export const approvalTasks = pgTable(
+  "approval_tasks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    runtimeStageId: uuid("runtime_stage_id").notNull(),
+    assignedMembershipId: uuid("assigned_membership_id").notNull(),
+    assigneeName: text("assignee_name").notNull(),
+    assigneeEmail: text("assignee_email").notNull(),
+    status: approvalTaskStatus("status").notNull().default("PENDING"),
+    activatedAt: timestamp("activated_at", { withTimezone: true }),
+    decidedAt: timestamp("decided_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("approval_tasks_stage_membership_unique").on(
+      table.runtimeStageId,
+      table.assignedMembershipId,
+    ),
+    index("approval_tasks_assignee_status_idx").on(
+      table.organizationId,
+      table.assignedMembershipId,
+      table.status,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "approval_tasks_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.runtimeStageId],
+      foreignColumns: [runtimeStages.organizationId, runtimeStages.id],
+      name: "approval_tasks_stage_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.assignedMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "approval_tasks_assignee_tenant_fk",
+    }),
+  ],
+);
+
+export const idempotencyRecords = pgTable(
+  "idempotency_records",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    actorMembershipId: uuid("actor_membership_id").notNull(),
+    operation: text("operation").notNull(),
+    key: text("key").notNull(),
+    requestHash: text("request_hash").notNull(),
+    status: idempotencyStatus("status").notNull().default("PROCESSING"),
+    responseStatus: integer("response_status"),
+    responseBody: jsonb("response_body").$type<Record<string, unknown>>(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("idempotency_records_scope_key_unique").on(
+      table.organizationId,
+      table.actorMembershipId,
+      table.operation,
+      table.key,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.actorMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "idempotency_records_actor_tenant_fk",
+    }),
+    check(
+      "idempotency_records_response_shape",
+      sql`(${table.status} = 'PROCESSING' and ${table.responseStatus} is null and ${table.responseBody} is null) or (${table.status} = 'COMPLETED' and ${table.responseStatus} is not null and ${table.responseBody} is not null)`,
+    ),
+  ],
+);
+
+export const auditEvents = pgTable(
+  "audit_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id"),
+    actorMembershipId: uuid("actor_membership_id"),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("audit_events_request_time_idx").on(
+      table.organizationId,
+      table.requestId,
+      table.occurredAt,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "audit_events_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.actorMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "audit_events_actor_tenant_fk",
+    }),
+  ],
+);
+
+export const outboxEvents = pgTable(
+  "outbox_events",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: uuid("aggregate_id").notNull(),
+    eventType: text("event_type").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    status: outboxStatus("status").notNull().default("PENDING"),
+    availableAt: timestamp("available_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    attempts: integer("attempts").notNull().default(0),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    ...timestamps,
+  },
+  (table) => [
+    index("outbox_events_dispatch_idx").on(
+      table.status,
+      table.availableAt,
+      table.createdAt,
+    ),
+    check("outbox_events_attempts_nonnegative", sql`${table.attempts} >= 0`),
+  ],
+);
+
+export const requestNumberSequences = pgTable(
+  "request_number_sequences",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    documentTypeId: uuid("document_type_id").notNull(),
+    departmentId: uuid("department_id").notNull(),
+    calendarYear: integer("calendar_year").notNull(),
+    nextValue: bigint("next_value", { mode: "bigint" })
+      .notNull()
+      .default(sql`1`),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("request_number_sequences_organization_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    uniqueIndex("request_number_sequences_scope_unique").on(
+      table.organizationId,
+      table.documentTypeId,
+      table.departmentId,
+      table.calendarYear,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.documentTypeId],
+      foreignColumns: [documentTypes.organizationId, documentTypes.id],
+      name: "request_number_sequences_document_type_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.departmentId],
+      foreignColumns: [departments.organizationId, departments.id],
+      name: "request_number_sequences_department_tenant_fk",
+    }),
+    check(
+      "request_number_sequences_year_range",
+      sql`${table.calendarYear} between 2000 and 9999`,
+    ),
+    check(
+      "request_number_sequences_next_positive",
+      sql`${table.nextValue} > 0`,
+    ),
+  ],
+);
+
+export const requestNumberAllocations = pgTable(
+  "request_number_allocations",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    sequenceId: uuid("sequence_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    allocatedValue: bigint("allocated_value", { mode: "bigint" }).notNull(),
+    formattedNumber: text("formatted_number").notNull(),
+    allocatedAt: timestamp("allocated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("request_number_allocations_request_unique").on(
+      table.requestId,
+    ),
+    uniqueIndex("request_number_allocations_sequence_value_unique").on(
+      table.sequenceId,
+      table.allocatedValue,
+    ),
+    uniqueIndex("request_number_allocations_organization_number_unique").on(
+      table.organizationId,
+      table.formattedNumber,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.sequenceId],
+      foreignColumns: [
+        requestNumberSequences.organizationId,
+        requestNumberSequences.id,
+      ],
+      name: "request_number_allocations_sequence_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "request_number_allocations_request_tenant_fk",
+    }),
+    check(
+      "request_number_allocations_value_positive",
+      sql`${table.allocatedValue} > 0`,
+    ),
+  ],
+);
+
+export const approvedArtifacts = pgTable(
+  "approved_artifacts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    approvalRoundId: uuid("approval_round_id").notNull(),
+    status: artifactStatus("status").notNull().default("PENDING"),
+    objectKey: text("object_key").notNull(),
+    sha256: text("sha256"),
+    sizeBytes: bigint("size_bytes", { mode: "bigint" }),
+    rendererVersion: text("renderer_version").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    readyAt: timestamp("ready_at", { withTimezone: true }),
+    retentionUntil: timestamp("retention_until", {
+      withTimezone: true,
+    }).notNull(),
+    legalHold: boolean("legal_hold").notNull().default(false),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    deletionAttempts: integer("deletion_attempts").notNull().default(0),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("approved_artifacts_organization_id_unique").on(
+      table.organizationId,
+      table.id,
+    ),
+    uniqueIndex("approved_artifacts_round_unique").on(
+      table.organizationId,
+      table.approvalRoundId,
+    ),
+    uniqueIndex("approved_artifacts_object_key_unique").on(table.objectKey),
+    index("approved_artifacts_work_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.leaseExpiresAt,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "approved_artifacts_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.approvalRoundId],
+      foreignColumns: [approvalRounds.organizationId, approvalRounds.id],
+      name: "approved_artifacts_round_tenant_fk",
+    }),
+    check(
+      "approved_artifacts_attempts_range",
+      sql`${table.attempts} between 0 and 5`,
+    ),
+    check(
+      "approved_artifacts_deletion_attempts_range",
+      sql`${table.deletionAttempts} between 0 and 8`,
+    ),
+    check(
+      "approved_artifacts_ready_shape",
+      sql`(${table.status} = 'READY' and ${table.sha256} is not null and ${table.sizeBytes} > 0 and ${table.readyAt} is not null) or (${table.status} <> 'READY')`,
+    ),
+  ],
+);
+
+export const artifactDeliveries = pgTable(
+  "artifact_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    artifactId: uuid("artifact_id").notNull(),
+    recipientMembershipId: uuid("recipient_membership_id"),
+    recipientEmail: text("recipient_email").notNull(),
+    recipientKind: text("recipient_kind").notNull(),
+    mode: deliveryMode("mode").notNull(),
+    status: deliveryStatus("status").notNull().default("PENDING"),
+    providerIdempotencyKey: text("provider_idempotency_key").notNull(),
+    providerMessageId: text("provider_message_id"),
+    attempts: integer("attempts").notNull().default(0),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("artifact_deliveries_logical_unique").on(
+      table.artifactId,
+      table.recipientEmail,
+      table.recipientKind,
+    ),
+    uniqueIndex("artifact_deliveries_provider_key_unique").on(
+      table.providerIdempotencyKey,
+    ),
+    index("artifact_deliveries_work_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.leaseExpiresAt,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.artifactId],
+      foreignColumns: [approvedArtifacts.organizationId, approvedArtifacts.id],
+      name: "artifact_deliveries_artifact_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.recipientMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "artifact_deliveries_recipient_tenant_fk",
+    }),
+    check(
+      "artifact_deliveries_attempts_range",
+      sql`${table.attempts} between 0 and 8`,
+    ),
+  ],
+);
+
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    requestId: uuid("request_id").notNull(),
+    runtimeStageId: uuid("runtime_stage_id"),
+    sourceEventId: uuid("source_event_id").notNull(),
+    eventType: text("event_type").notNull(),
+    recipientMembershipId: uuid("recipient_membership_id").notNull(),
+    recipientEmail: text("recipient_email").notNull(),
+    subject: text("subject").notNull(),
+    body: text("body").notNull(),
+    status: notificationDeliveryStatus("status").notNull().default("PENDING"),
+    providerIdempotencyKey: text("provider_idempotency_key").notNull(),
+    providerMessageId: text("provider_message_id"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: timestamp("lease_expires_at", { withTimezone: true }),
+    lastErrorCode: text("last_error_code"),
+    acceptedAt: timestamp("accepted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("notification_deliveries_event_recipient_unique").on(
+      table.sourceEventId,
+      table.recipientMembershipId,
+    ),
+    uniqueIndex("notification_deliveries_provider_key_unique").on(
+      table.providerIdempotencyKey,
+    ),
+    index("notification_deliveries_work_idx").on(
+      table.status,
+      table.nextAttemptAt,
+      table.leaseExpiresAt,
+    ),
+    foreignKey({
+      columns: [table.organizationId, table.requestId],
+      foreignColumns: [requests.organizationId, requests.id],
+      name: "notification_deliveries_request_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.runtimeStageId],
+      foreignColumns: [runtimeStages.organizationId, runtimeStages.id],
+      name: "notification_deliveries_stage_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.recipientMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "notification_deliveries_recipient_tenant_fk",
+    }),
+    check(
+      "notification_deliveries_attempts_range",
+      sql`${table.attempts} between 0 and 8`,
+    ),
+  ],
+);
+
+export const artifactAccessGrants = pgTable(
+  "artifact_access_grants",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    organizationId: uuid("organization_id").notNull(),
+    artifactId: uuid("artifact_id").notNull(),
+    audienceMembershipId: uuid("audience_membership_id").notNull(),
+    purpose: artifactGrantPurpose("purpose").notNull(),
+    tokenHash: text("token_hash").notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("artifact_access_grants_token_unique").on(table.tokenHash),
+    index("artifact_access_grants_expiry_idx").on(table.expiresAt),
+    foreignKey({
+      columns: [table.organizationId, table.artifactId],
+      foreignColumns: [approvedArtifacts.organizationId, approvedArtifacts.id],
+      name: "artifact_access_grants_artifact_tenant_fk",
+    }),
+    foreignKey({
+      columns: [table.organizationId, table.audienceMembershipId],
+      foreignColumns: [memberships.organizationId, memberships.id],
+      name: "artifact_access_grants_audience_tenant_fk",
+    }),
   ],
 );

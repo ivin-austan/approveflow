@@ -61,6 +61,7 @@ describe("WorkflowConfigurationService", () => {
         includeAllSubmittedFields: true,
         excludedFieldIds: [],
       },
+      finalRecipientMembershipIds: [],
       automaticApproval: { enabled: false },
     });
     expect(createDocumentType.mock.calls[0]?.[0].code).toBe("INV");
@@ -78,6 +79,7 @@ describe("WorkflowConfigurationService", () => {
         includeAllSubmittedFields: true,
         excludedFieldIds: [],
       },
+      finalRecipientMembershipIds: [],
       automaticApproval: { enabled: false } as const,
     };
     await expect(

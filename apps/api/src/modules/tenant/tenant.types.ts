@@ -6,7 +6,10 @@ export interface OrganizationSummary {
 
 export interface TenantContext {
   readonly userId: string;
+  readonly fullName?: string;
+  readonly email?: string;
   readonly organizationId: string;
+  readonly organizationName?: string;
   readonly membershipId: string;
   readonly permissions: ReadonlySet<string>;
 }

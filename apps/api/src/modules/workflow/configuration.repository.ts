@@ -1,10 +1,12 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import {
   businessCalendarHolidays,
   businessCalendarWorkPeriods,
   businessCalendars,
   documentTypes,
+  documentTypeRecipients,
+  memberships,
   schema as databaseSchema,
 } from "@approveflow/database";
 import type { WorkflowConfigurationRepository } from "./configuration.service.js";
@@ -161,6 +163,20 @@ export class DrizzleWorkflowConfigurationRepository implements WorkflowConfigura
           ),
         );
       if (!calendar) return false;
+      const recipientIds = [...new Set(input.finalRecipientMembershipIds)];
+      if (recipientIds.length > 0) {
+        const recipients = await transaction
+          .select({ id: memberships.id })
+          .from(memberships)
+          .where(
+            and(
+              eq(memberships.organizationId, input.organizationId),
+              inArray(memberships.id, recipientIds),
+              eq(memberships.status, "ACTIVE"),
+            ),
+          );
+        if (recipients.length !== recipientIds.length) return false;
+      }
       await transaction.insert(documentTypes).values({
         id: input.id,
         organizationId: input.organizationId,
@@ -175,6 +191,14 @@ export class DrizzleWorkflowConfigurationRepository implements WorkflowConfigura
         automaticApprovalDuration: input.automaticApprovalDuration,
         automaticApprovalDurationUnit: input.automaticApprovalDurationUnit,
       });
+      if (recipientIds.length > 0)
+        await transaction.insert(documentTypeRecipients).values(
+          recipientIds.map((membershipId) => ({
+            organizationId: input.organizationId,
+            documentTypeId: input.id,
+            membershipId,
+          })),
+        );
       return true;
     });
   }
